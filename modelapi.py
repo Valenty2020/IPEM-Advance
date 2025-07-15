@@ -116,12 +116,6 @@ def run_analytics(input: AnalyticsInput):
             feedCcontnt=input.feedCcontnt
         )
 
-        # Adjust outputs consistently
-        result_df["Constant$ Breakeven Price"] -= 2.84
-        result_df["Current$ Breakeven Price"] -= 2.26
-        result_df["Constant$ SC wCredit"] -= 2.86
-        result_df["Current$ SC wCredit"] -= 2.28
-
         return Response(content=result_df.to_json(orient='records'), media_type='application/json')
 
     except Exception as e:
