@@ -4,7 +4,7 @@ from typing import Optional, List
 import pandas as pd
 import numpy as np
 import uvicorn
-from originalmodel import  Analytics_Model2
+from originalmodel import Analytics_Model2
 
 app = FastAPI(
     title="Advanced Project Economics Model API",
@@ -77,16 +77,25 @@ class AnalysisRequest(BaseModel):
     OPEX: Optional[float] = None
     PRIcoef: Optional[float] = None
     CONcoef: Optional[float] = None
+    # Add custom data fields that might override CSV data
+    feedEcontnt: Optional[float] = None
+    feedCcontnt: Optional[float] = None
+    Heat_req: Optional[float] = None
+    Elect_req: Optional[float] = None
+    Yld: Optional[float] = None
+    Cap: Optional[float] = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Load required data files"""
+    """Load required data files as fallbacks"""
     global project_datas, multipliers
     try:
         project_datas = pd.read_csv("./project_data.csv")
         multipliers = pd.read_csv("./sectorwise_multipliers.csv")
     except FileNotFoundError as e:
-        raise Exception(f"Required data files not found: {str(e)}")
+        print(f"Warning: Could not load data files - using empty DataFrames as fallback: {str(e)}")
+        project_datas = pd.DataFrame()
+        multipliers = pd.DataFrame()
 
 @app.get("/")
 async def root():
@@ -108,21 +117,28 @@ async def get_defaults():
 @app.get("/locations")
 async def get_locations():
     """Get list of available countries/locations"""
-    locations = project_datas['Country'].unique().tolist()
-    return {"locations": locations}
+    try:
+        locations = project_datas['Country'].unique().tolist()
+        return {"locations": locations}
+    except:
+        return {"locations": []}
 
 @app.get("/products")
 async def get_products():
     """Get list of available products"""
-    products = project_datas['Main_Prod'].unique().tolist()
-    return {"products": products}
+    try:
+        products = project_datas['Main_Prod'].unique().tolist()
+        return {"products": products}
+    except:
+        return {"products": []}
 
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
     """
     Run economic analysis with customizable parameters.
     
-    Any parameters not provided will use default values.
+    Any parameters not provided will use default values. Custom data in the payload
+    will override any values from the CSV files.
     """
     # Merge request parameters with defaults
     config = DEFAULT_CONFIG.copy()
@@ -133,7 +149,7 @@ async def run_analysis(request: AnalysisRequest):
     validate_parameters(config)
     
     # Create a data row with the custom parameters
-    custom_data = create_custom_data_row(config)
+    custom_data = create_custom_data_row(config, provided_params)
     
     # Run analysis
     try:
@@ -157,69 +173,83 @@ async def run_analysis(request: AnalysisRequest):
 
 def validate_parameters(config: dict):
     """Validate all configuration parameters"""
-    if config["location"] not in project_datas['Country'].unique():
-        raise HTTPException(status_code=400, detail="Invalid location")
+    # Only validate location/product if we're not providing all custom data
+    if not all(k in config for k in ['feedEcontnt', 'feedCcontnt', 'Heat_req', 'Elect_req']):
+        try:
+            if "location" in config and config["location"] not in project_datas['Country'].unique():
+                raise HTTPException(status_code=400, detail="Invalid location")
+            
+            if "product" in config and config["product"] not in project_datas['Main_Prod'].unique():
+                raise HTTPException(status_code=400, detail="Invalid product")
+        except:
+            # If CSV data isn't loaded, we'll rely on custom data
+            if not all(k in config for k in ['feedEcontnt', 'feedCcontnt', 'Heat_req', 'Elect_req']):
+                raise HTTPException(status_code=400, detail="Either provide complete custom data or ensure location/product exist in project data")
     
-    if config["product"] not in project_datas['Main_Prod'].unique():
-        raise HTTPException(status_code=400, detail="Invalid product")
-    
-    if config["plant_mode"] not in ["Green", "Brown"]:
+    if "plant_mode" in config and config["plant_mode"] not in ["Green", "Brown"]:
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
     
-    if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
+    if "fund_mode" in config and config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
         raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
     
-    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
+    if "opex_mode" in config and config["opex_mode"] not in ["Inflated", "Uninflated"]:
         raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
     
-    if config["carbon_value"] not in ["Yes", "No"]:
+    if "carbon_value" in config and config["carbon_value"] not in ["Yes", "No"]:
         raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
     
-    if config["plant_size"] not in ["Large", "Small", None]:
+    if "plant_size" in config and config["plant_size"] not in ["Large", "Small", None]:
         raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
     
-    if config["plant_effy"] not in ["High", "Low", None]:
+    if "plant_effy" in config and config["plant_effy"] not in ["High", "Low", None]:
         raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
     
-    if sum(config["capex_spread"]) != 1.0:
+    if "capex_spread" in config and sum(config["capex_spread"]) != 1.0:
         raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
 
-def create_custom_data_row(config: dict) -> pd.DataFrame:
-    """Create a custom data row from the configuration"""
+def create_custom_data_row(config: dict, provided_params: dict) -> pd.DataFrame:
+    """Create a custom data row from the configuration, using provided params first"""
+    # Start with default values from CSV if available
+    try:
+        if "location" in config and "product" in config:
+            base_data = project_datas[
+                (project_datas['Country'] == config["location"]) & 
+                (project_datas['Main_Prod'] == config["product"])
+            ].iloc[0].to_dict()
+        else:
+            base_data = {}
+    except:
+        base_data = {}
+    
+    # Base data structure with all possible fields
     data = {
-        "Country": config["location"],
-        "Main_Prod": config["product"],
-        "Plant_Size": config["plant_size"],
-        "Plant_Effy": config["plant_effy"],
-        "ProcTech": "Custom",  # Mark as custom configuration
-        "Base_Yr": config["baseYear"],
-        "Cap": 1,  # Capacity - will be scaled by CAPEX
-        "Yld": 1,  # Yield - adjust based on efficiency
-        "feedEcontnt": 0,  # Will be calculated
-        "feedCcontnt": 0,  # Will be calculated
-        "Heat_req": 0,  # Will be calculated
-        "Elect_req": 0,  # Will be calculated
-        "Feed_Price": config["Feed_Price"],
-        "Fuel_Price": config["Fuel_Price"],
-        "Elect_Price": config["Elect_Price"],
-        "CO2price": config["CarbonTAX_value"],
-        "corpTAX": config["corpTAX_value"],
-        "CAPEX": config["CAPEX"],
-        "OPEX": config["OPEX"],
-        # Additional calculated fields would go here
+        "Country": config.get("location", "USA"),
+        "Main_Prod": config.get("product", "Ethylene"),
+        "Plant_Size": config.get("plant_size", "Large"),
+        "Plant_Effy": config.get("plant_effy", "High"),
+        "ProcTech": "Custom",
+        "Base_Yr": config.get("baseYear", 2025),
+        "Cap": config.get("Cap", 1),  # Capacity
+        "Yld": config.get("Yld", 0.9 if config.get("plant_effy", "High") == "High" else 0.7),
+        "feedEcontnt": config.get("feedEcontnt", base_data.get("feedEcontnt", 0)),
+        "feedCcontnt": config.get("feedCcontnt", base_data.get("feedCcontnt", 0)),
+        "Heat_req": config.get("Heat_req", base_data.get("Heat_req", 0)),
+        "Elect_req": config.get("Elect_req", base_data.get("Elect_req", 0)),
+        "Feed_Price": config.get("Feed_Price", 712.9),
+        "Fuel_Price": config.get("Fuel_Price", 712.9),
+        "Elect_Price": config.get("Elect_Price", 16.92),
+        "CO2price": config.get("CarbonTAX_value", 0),
+        "corpTAX": config.get("corpTAX_value", 0.27),
+        "CAPEX": config.get("CAPEX", 1080000000),
+        "OPEX": config.get("OPEX", 33678301.89),
     }
     
-    # Adjust yield based on efficiency
-    if config["plant_effy"] == "High":
-        data["Yld"] = 0.9  # 90% yield for high efficiency
-    else:
-        data["Yld"] = 0.7  # 70% yield for low efficiency
+    # Update with any additional provided parameters that match our data fields
+    for field in ['feedEcontnt', 'feedCcontnt', 'Heat_req', 'Elect_req', 'Yld', 'Cap']:
+        if field in provided_params:
+            data[field] = provided_params[field]
     
     return pd.DataFrame([data])
-
-# Include all your model functions here (ChemProcess_Model, MicroEconomic_Model, MacroEconomic_Model, Analytics_Model2)
-# ... [paste all the model functions from your original code here] ...
-# NOTE: You'll need to modify these functions to use the parameters from the config
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
