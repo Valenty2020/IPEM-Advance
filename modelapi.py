@@ -27,7 +27,6 @@ app = FastAPI(
 class AnalysisRequest(BaseModel):
     # Required parameters with no defaults
     location: str
-    product: str
     plant_effy: str
     plant_size: str
     plant_mode: str
@@ -108,7 +107,6 @@ async def run_analysis(request: AnalysisRequest):
             multiplier=multipliers,
             project_data=custom_data,
             location=config["location"],
-            product=config["product"],
             plant_mode=config["plant_mode"],
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
@@ -129,10 +127,6 @@ def validate_parameters(config: dict):
     if config["location"] not in project_datas['Country'].unique():
         logger.error(f"Invalid location: {config['location']}")
         raise HTTPException(status_code=400, detail="Invalid location")
-    
-    if config["product"] not in project_datas['Main_Prod'].unique():
-        logger.error(f"Invalid product: {config['product']}")
-        raise HTTPException(status_code=400, detail="Invalid product")
     
     if config["plant_mode"] not in ["Green", "Brown"]:
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
@@ -165,7 +159,6 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
     """Create data row from payload values only"""
     data = {
         "Country": config["location"],
-        "Main_Prod": config["product"],
         "Plant_Size": config["plant_size"],
         "Plant_Effy": config["plant_effy"],
         "ProcTech": "Custom",
