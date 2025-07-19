@@ -27,13 +27,15 @@ app = FastAPI(
 class AnalysisRequest(BaseModel):
     # Required parameters with no defaults
     location: str
-    product: str
     plant_effy: str
     plant_size: str
     plant_mode: str
     fund_mode: str
     opex_mode: str
     carbon_value: str
+    
+    # Optional parameters
+    product: Optional[str] = None
     
     # Optional technical parameters
     operating_prd: int
@@ -87,7 +89,7 @@ async def startup_event():
 async def run_analysis(request: AnalysisRequest):
     """
     Run economic analysis using ONLY the provided payload values.
-    All parameters are required - no defaults will be used.
+    All parameters are required except product - no defaults will be used.
     """
     # Convert request to dict and log everything
     config = request.dict()
@@ -108,7 +110,7 @@ async def run_analysis(request: AnalysisRequest):
             multiplier=multipliers,
             project_data=custom_data,
             location=config["location"],
-            product=config["product"],
+            product=config.get("product", ""),  # Use empty string if product not provided
             plant_mode=config["plant_mode"],
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
@@ -130,9 +132,11 @@ def validate_parameters(config: dict):
         logger.error(f"Invalid location: {config['location']}")
         raise HTTPException(status_code=400, detail="Invalid location")
     
-    if config["product"] not in project_datas['Main_Prod'].unique():
-        logger.error(f"Invalid product: {config['product']}")
-        raise HTTPException(status_code=400, detail="Invalid product")
+    # Only validate product if it's provided
+    if "product" in config and config["product"] is not None:
+        if config["product"] not in project_datas['Main_Prod'].unique():
+            logger.error(f"Invalid product: {config['product']}")
+            raise HTTPException(status_code=400, detail="Invalid product")
     
     if config["plant_mode"] not in ["Green", "Brown"]:
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
@@ -165,7 +169,7 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
     """Create data row from payload values only"""
     data = {
         "Country": config["location"],
-        "Main_Prod": config["product"],
+        "Main_Prod": config.get("product", ""),  # Use empty string if product not provided
         "Plant_Size": config["plant_size"],
         "Plant_Effy": config["plant_effy"],
         "ProcTech": "Custom",
