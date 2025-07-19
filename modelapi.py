@@ -8,12 +8,12 @@ import logging
 from datetime import datetime
 from originalmodel import Analytics_Model2
 
-# Configure logging
+# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('analysis_logs.log'),
+        logging.FileHandler('api_logs.log'),
         logging.StreamHandler()
     ]
 )
@@ -118,18 +118,21 @@ async def root():
 @app.get("/defaults")
 async def get_defaults():
     """Get default parameter values"""
+    logger.info("Default configuration requested")
     return DEFAULT_CONFIG
 
 @app.get("/locations")
 async def get_locations():
     """Get list of available countries/locations"""
     locations = project_datas['Country'].unique().tolist()
+    logger.info(f"Available locations requested. Found {len(locations)} locations.")
     return {"locations": locations}
 
 @app.get("/products")
 async def get_products():
     """Get list of available products"""
     products = project_datas['Main_Prod'].unique().tolist()
+    logger.info(f"Available products requested. Found {len(products)} products.")
     return {"products": products}
 
 @app.post("/analyze", response_model=List[dict])
@@ -139,10 +142,19 @@ async def run_analysis(request: AnalysisRequest):
     
     Any parameters not provided will use default values.
     """
+    # Log the incoming request
+    request_data = request.dict(exclude_unset=True)
+    logger.info(f"Incoming request payload: {request_data}")
+    
     # Merge request parameters with defaults
     config = DEFAULT_CONFIG.copy()
     provided_params = request.dict(exclude_unset=True)
     config.update(provided_params)
+    
+    # Log the final configuration after merging with defaults
+    logger.info("Final configuration values:")
+    for key, value in config.items():
+        logger.info(f"{key}: {value}")
     
     # Validate parameters
     validate_parameters(config)
@@ -150,11 +162,9 @@ async def run_analysis(request: AnalysisRequest):
     # Create a data row with the custom parameters
     custom_data = create_custom_data_row(config)
     
-    # Log all parameters before running analysis
-    log_parameters(config, custom_data)
-    
     # Run analysis
     try:
+        logger.info("Starting analysis...")
         results = Analytics_Model2(
             multiplier=multipliers,
             project_data=custom_data,
@@ -168,6 +178,7 @@ async def run_analysis(request: AnalysisRequest):
             carbon_value=config["carbon_value"]
         )
         
+        logger.info("Analysis completed successfully")
         return results.to_dict(orient='records')
     
     except Exception as e:
@@ -177,30 +188,39 @@ async def run_analysis(request: AnalysisRequest):
 def validate_parameters(config: dict):
     """Validate all configuration parameters"""
     if config["location"] not in project_datas['Country'].unique():
+        logger.error(f"Invalid location: {config['location']}")
         raise HTTPException(status_code=400, detail="Invalid location")
     
     if config["product"] not in project_datas['Main_Prod'].unique():
+        logger.error(f"Invalid product: {config['product']}")
         raise HTTPException(status_code=400, detail="Invalid product")
     
     if config["plant_mode"] not in ["Green", "Brown"]:
+        logger.error(f"Invalid plant_mode: {config['plant_mode']}")
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
     
     if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
+        logger.error(f"Invalid fund_mode: {config['fund_mode']}")
         raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
     
     if config["opex_mode"] not in ["Inflated", "Uninflated"]:
+        logger.error(f"Invalid opex_mode: {config['opex_mode']}")
         raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
     
     if config["carbon_value"] not in ["Yes", "No"]:
+        logger.error(f"Invalid carbon_value: {config['carbon_value']}")
         raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
     
     if config["plant_size"] not in ["Large", "Small", None]:
+        logger.error(f"Invalid plant_size: {config['plant_size']}")
         raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
     
     if config["plant_effy"] not in ["High", "Low", None]:
+        logger.error(f"Invalid plant_effy: {config['plant_effy']}")
         raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
     
     if sum(config["capex_spread"]) != 1.0:
+        logger.error(f"Invalid capex_spread: {config['capex_spread']} (sum is {sum(config['capex_spread'])})")
         raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
 
 def create_custom_data_row(config: dict) -> pd.DataFrame:
@@ -225,8 +245,6 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "corpTAX": config["corpTAX_value"],
         "CAPEX": config["CAPEX"],
         "OPEX": config["OPEX"],
-        "PRIcoef": config["PRIcoef"],
-        "CONcoef": config["CONcoef"],
         # Additional calculated fields would go here
     }
     
@@ -236,58 +254,8 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
     else:
         data["Yld"] = 0.7  # 70% yield for low efficiency
     
+    logger.info(f"Created custom data row with CAPEX: {data['CAPEX']}, OPEX: {data['OPEX']}")
     return pd.DataFrame([data])
-
-def log_parameters(config: dict, custom_data: pd.DataFrame):
-    """Log all parameters used for the analysis"""
-    log_data = {
-        "timestamp": datetime.now().isoformat(),
-        "country": config["location"],
-        "product": config["product"],
-        "plant_mode": config["plant_mode"],
-        "fund_mode": config["fund_mode"],
-        "opex_mode": config["opex_mode"],
-        "carbon_value": config["carbon_value"],
-        "operating_prd": config["operating_prd"],
-        "util_operating_first": config["util_operating_first"],
-        "util_operating_second": config["util_operating_second"],
-        "util_operating_third": config["util_operating_third"],
-        "infl": config["infl"],
-        "RR": config["RR"],
-        "IRR": config["IRR"],
-        "construction_prd": config["construction_prd"],
-        "capex_spread": config["capex_spread"],
-        "shrDebt_value": config["shrDebt_value"],
-        "baseYear": config["baseYear"],
-        "ownerCost": config["ownerCost"],
-        "corpTAX_value": config["corpTAX_value"],
-        "Feed_Price": config["Feed_Price"],
-        "Fuel_Price": config["Fuel_Price"],
-        "Elect_Price": config["Elect_Price"],
-        "CarbonTAX_value": config["CarbonTAX_value"],
-        "credit_value": config["credit_value"],
-        "CAPEX": config["CAPEX"],
-        "OPEX": config["OPEX"],
-        "PRIcoef": config["PRIcoef"],
-        "CONcoef": config["CONcoef"],
-    }
-    
-    # Add calculated parameters from custom_data
-    calculated_params = {
-        "Cap": custom_data.iloc[0]["Cap"],
-        "Yld": custom_data.iloc[0]["Yld"],
-        "feedEcontnt": custom_data.iloc[0]["feedEcontnt"],
-        "Heat_req": custom_data.iloc[0]["Heat_req"],
-        "Elect_req": custom_data.iloc[0]["Elect_req"],
-        "feedCcontnt": custom_data.iloc[0]["feedCcontnt"],
-    }
-    
-    log_data.update(calculated_params)
-    
-    # Log the parameters
-    logger.info("Analysis parameters used:")
-    for key, value in log_data.items():
-        logger.info(f"{key}: {value}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
