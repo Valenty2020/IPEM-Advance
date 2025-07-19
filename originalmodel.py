@@ -930,7 +930,7 @@ import numpy as np
 # This is a conceptual representation of your Analytics_Model2 function.
 # You need to apply these changes to your actual originalmodel.py file.
 
-def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size):
+def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
     """
     Performs economic analysis for a chemical plant.
     This function has been updated to gracefully handle an optional 'product' parameter.
