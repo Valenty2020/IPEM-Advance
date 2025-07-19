@@ -924,147 +924,194 @@ def MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_
 ############################################################# MACROECONOMIC MODEL ENDS ############################################################
 
 
-############################################################# ANALYTICS MODEL BEGINS ############################################################
+import pandas as pd
+import numpy as np
+
+# This is a conceptual representation of your Analytics_Model2 function.
+# You need to apply these changes to your actual originalmodel.py file.
 
 def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
+    """
+    Performs economic analysis for a chemical plant.
+    This function has been updated to gracefully handle an optional 'product' parameter.
+    """
 
-  # Filtering data to choose country in which chemical plant is located and the type of product from the plant
-  dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
+    # --- START OF UPDATED LOGIC FOR 'dt' ---
+    # The 'project_data' passed to this function is the 'custom_data' DataFrame
+    # created in the API, which is a single-row DataFrame containing all
+    # payload-provided parameters.
 
-
-  Infl = 0.02  
-
-  tempNUM = 1000000
-  results=[]
-  for index, data in dt.iterrows():
-
-    prodQ, feedQ, Rheat, netHeat, Relec, ghg_dir, ghg_ind = ChemProcess_Model(data)
-    Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, utilContr, bankContr, taxContr, otherContr, cshflw, cshflw2, Year, project_life, construction_prd, Yrly_invsmt, bank_chrg, NetRevn, tax_pybl = MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value)
-    GDP_dir, GDP_ind, GDP_tot, JOB_dir, JOB_ind, JOB_tot, PAY_dir, PAY_ind, PAY_tot, TAX_dir, TAX_ind, TAX_tot, GDP_totPRI, JOB_totPRI, PAY_totPRI, GDP_dirPRI, JOB_dirPRI, PAY_dirPRI = MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_mode, carbon_value)
-
-    Yrly_cost = np.array(Yrly_invsmt) + np.array(bank_chrg)
-
-    Ps = [Ps] * project_life
-    Pc = [Pc] * project_life
-    Psk = [0] * project_life
-    Pck = [0] * project_life
-
-    for i in range(project_life):
-      Psk[i] = Pso * ((1 + Infl) ** i)
-      Pck[i] = Pco * ((1 + Infl) ** i)
-
-
-    Rs = [Ps[i] * prodQ[i] for i in range(project_life)]
-    NRs = [Rs[i] - Yrly_cost[i] for i in range(project_life)]
-
-
-    Rsk = Psk * prodQ
-    NRsk = Rsk - Yrly_cost
-
-    ccflows = np.cumsum(NRs)
-    ccflowsk = np.cumsum(NRsk)
-
-    cost_modes = ["Supply Cost", "Cash Cost"]
-    if plant_mode == "Green":
-      cost_mode = cost_modes[0]
+    # If 'product' is provided and not an empty string, we filter 'project_data'
+    # based on both 'Country' and 'Main_Prod'.
+    # Otherwise, if 'product' is empty or None, we assume the 'project_data'
+    # (i.e., 'custom_data') itself contains the specific row for analysis,
+    # and no further filtering by 'Main_Prod' is needed.
+    if product and product != "":
+        dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
+        # If filtering by product results in an empty DataFrame, it means no matching
+        # data was found. In this case, we return an empty DataFrame to prevent
+        # the 'No objects to concatenate' error later.
+        if dt.empty:
+            print(f"Warning: No data found for location '{location}' and product '{product}'. Returning empty DataFrame.")
+            return pd.DataFrame()
     else:
-      cost_mode = cost_modes[1]
+        # If 'product' is not specified, use the 'project_data' directly.
+        # This assumes 'project_data' (which is the single-row 'custom_data' from the API)
+        # already contains the specific data needed for the analysis.
+        dt = project_data
+        # Ensure that 'dt' is not empty, though it should not be if 'custom_data' is always generated.
+        if dt.empty:
+            print(f"Warning: Provided project_data is empty when product is not specified. Returning empty DataFrame.")
+            return pd.DataFrame()
+    # --- END OF UPDATED LOGIC FOR 'dt' ---
 
 
-    pri_bothJOB = [0] * project_life
-    pri_directJOB = [0] * project_life
-    pri_indirectJOB = [0] * project_life
+    Infl = 0.02
 
-    All_directJOB = [0] * project_life
-    All_indirectJOB = [0] * project_life
-    All_bothJOB = [0] * project_life
+    tempNUM = 1000000
+    results=[]
+    for index, data in dt.iterrows(): # This loop will now correctly iterate over the determined 'dt'
+                                      # (either filtered or the original custom_data).
 
-    pri_bothGDP = GDP_totPRI
-    pri_directGDP = GDP_dirPRI
-    pri_indirectGDP = GDP_totPRI - GDP_dirPRI
-    All_bothGDP = GDP_tot
-    All_directGDP =  GDP_dir
-    All_indirectGDP = GDP_tot - GDP_dir
+        # Placeholder calls for your existing models.
+        # Ensure these functions (ChemProcess_Model, MicroEconomic_Model, MacroEconomic_Model)
+        # are defined elsewhere in originalmodel.py and are robust enough to handle 'data'.
+        # Assuming these functions are correctly implemented and return the expected values.
+        try:
+            prodQ, feedQ, Rheat, netHeat, Relec, ghg_dir, ghg_ind = ChemProcess_Model(data)
+            Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, utilContr, bankContr, taxContr, otherContr, cshflw, cshflw2, Year, project_life, construction_prd, Yrly_invsmt, bank_chrg, NetRevn, tax_pybl = MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value)
+            GDP_dir, GDP_ind, GDP_tot, JOB_dir, JOB_ind, JOB_tot, PAY_dir, PAY_ind, PAY_tot, TAX_dir, TAX_ind, TAX_tot, GDP_totPRI, JOB_totPRI, PAY_totPRI, GDP_dirPRI, JOB_dirPRI, PAY_dirPRI = MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_mode, carbon_value)
+        except Exception as e:
+            print(f"Error during model execution for data row: {data.to_dict()}. Error: {e}")
+            # Depending on your error handling strategy, you might want to skip this row
+            # or raise a more specific exception. For now, we'll continue, but this row
+            # won't contribute to 'results'.
+            continue # Skip to the next iteration if an error occurs
 
-    pri_bothTAX = TAX_tot
-    pri_directTAX = TAX_dir
-    pri_indirectTAX = TAX_ind
+        Yrly_cost = np.array(Yrly_invsmt) + np.array(bank_chrg)
 
-    pri_bothPAY = PAY_totPRI
-    pri_directPAY = PAY_dirPRI
-    pri_indirectPAY = PAY_totPRI - PAY_dirPRI
-    All_bothPAY = PAY_tot
-    All_directPAY = PAY_dir
-    All_indirectPAY = PAY_tot - PAY_dir
+        Ps = [Ps] * project_life
+        Pc = [Pc] * project_life
+        Psk = [0] * project_life
+        Pck = [0] * project_life
 
-
-
-    pri_bothJOB[construction_prd:] = JOB_totPRI[construction_prd:]
-    pri_directJOB[construction_prd:] = JOB_dirPRI[construction_prd:]
-    pri_indirectJOB[construction_prd:] = JOB_totPRI[construction_prd:]  - JOB_dirPRI[construction_prd:]
-
-    pri_bothJOB[:construction_prd] = JOB_totPRI[:construction_prd]
-    pri_directJOB[:construction_prd] = JOB_dirPRI[:construction_prd]
-    pri_indirectJOB[:construction_prd] = JOB_totPRI[:construction_prd]  - JOB_dirPRI[:construction_prd]
+        for i in range(project_life):
+            Psk[i] = Pso * ((1 + Infl) ** i)
+            Pck[i] = Pco * ((1 + Infl) ** i)
 
 
-
-    All_bothJOB[construction_prd:] = JOB_tot[construction_prd:]
-    All_directJOB[construction_prd:] = JOB_dir[construction_prd:]
-    All_indirectJOB[construction_prd:] = JOB_tot[construction_prd:]  - JOB_dir[construction_prd:]
-
-    All_bothJOB[:construction_prd] = JOB_tot[:construction_prd]
-    All_directJOB[:construction_prd] = JOB_dir[:construction_prd]
-    All_indirectJOB[:construction_prd] = JOB_tot[:construction_prd]  - JOB_dir[:construction_prd]
+        Rs = [Ps[i] * prodQ[i] for i in range(project_life)]
+        NRs = [Rs[i] - Yrly_cost[i] for i in range(project_life)]
 
 
+        Rsk = Psk * prodQ
+        NRsk = Rsk - Yrly_cost
 
-    result = pd.DataFrame({
-        'Year': Year,
-        'Process Technology': [data['ProcTech']] * project_life,
-        'Plant Size': [data['Plant_Size']] * project_life,
-        'Plant Efficiency': [data['Plant_Effy']] * project_life,
-        'Feedstock Input (TPA)': feedQ,
-        'Product Output (TPA)': prodQ,
-        'Direct GHG Emissions (TPA)': ghg_dir,
-        'Cost Mode': [cost_mode]  * project_life,
-        'Real cumCash Flow': ccflows,
-        'Nominal cumCash Flow': ccflowsk,
-        'Constant$ Breakeven Price': Ps,
-        'Capex portion': [capexContr] * project_life,
-        'Opex portion': [opexContr] * project_life,
-        'Feed portion': [feedContr] * project_life,
-        'Util portion': [utilContr] * project_life,
-        'Bank portion': [bankContr] * project_life,
-        'Tax portion': [taxContr] * project_life,
-        'Other portion': [otherContr] * project_life,
-        'Current$ Breakeven Price': Psk,
-        'Constant$ SC wCredit': Pc,
-        'Current$ SC wCredit': Pck,
-        'Project Finance': [fund_mode] * project_life,
-        'Carbon Valued': [carbon_value] * project_life,
-        'Feedstock Price ($/t)': [data['Feed_Price']] * project_life,
-        'pri_directGDP': np.array(pri_directGDP)/tempNUM,
-        'pri_bothGDP': np.array(pri_bothGDP)/tempNUM,
-        'All_directGDP': np.array(All_directGDP)/tempNUM,
-        'All_bothGDP': np.array(All_bothGDP)/tempNUM,
-        'pri_directPAY': np.array(pri_directPAY)/tempNUM,
-        'pri_bothPAY': np.array(pri_bothPAY)/tempNUM,
-        'All_directPAY': np.array(All_directPAY)/tempNUM,
-        'All_bothPAY': np.array(All_bothPAY)/tempNUM,
-        'pri_directJOB': np.array(pri_directJOB)/tempNUM,
-        'pri_bothJOB': np.array(pri_bothJOB)/tempNUM,
-        'All_directJOB': np.array(All_directJOB)/tempNUM,
-        'All_bothJOB': np.array(All_bothJOB)/tempNUM,
-        'pri_directTAX': np.array(pri_directTAX)/tempNUM,
-        'pri_bothTAX': np.array(pri_bothTAX)/tempNUM
-    })
-    results.append(result)
+        ccflows = np.cumsum(NRs)
+        ccflowsk = np.cumsum(NRsk)
+
+        cost_modes = ["Supply Cost", "Cash Cost"]
+        if plant_mode == "Green":
+            cost_mode = cost_modes[0]
+        else:
+            cost_mode = cost_modes[1]
 
 
-  results = pd.concat(results, ignore_index=True)
+        pri_bothJOB = [0] * project_life
+        pri_directJOB = [0] * project_life
+        pri_indirectJOB = [0] * project_life
+
+        All_directJOB = [0] * project_life
+        All_indirectJOB = [0] * project_life
+        All_bothJOB = [0] * project_life
+
+        pri_bothGDP = GDP_totPRI
+        pri_directGDP = GDP_dirPRI
+        pri_indirectGDP = GDP_totPRI - GDP_dirPRI
+        All_bothGDP = GDP_tot
+        All_directGDP =  GDP_dir
+        All_indirectGDP = GDP_tot - GDP_dir
+
+        pri_bothTAX = TAX_tot
+        pri_directTAX = TAX_dir
+        pri_indirectTAX = TAX_ind
+
+        pri_bothPAY = PAY_totPRI
+        pri_directPAY = PAY_dirPRI
+        pri_indirectPAY = PAY_totPRI - PAY_dirPRI
+        All_bothPAY = PAY_tot
+        All_directPAY = PAY_dir
+        All_indirectPAY = PAY_tot - PAY_dir
 
 
 
-  return results
+        pri_bothJOB[construction_prd:] = JOB_totPRI[construction_prd:]
+        pri_directJOB[construction_prd:] = JOB_dirPRI[construction_prd:]
+        pri_indirectJOB[construction_prd:] = JOB_totPRI[construction_prd:]  - JOB_dirPRI[construction_prd:]
 
+        pri_bothJOB[:construction_prd] = JOB_totPRI[:construction_prd]
+        pri_directJOB[:construction_prd] = JOB_dirPRI[:construction_prd]
+        pri_indirectJOB[:construction_prd] = JOB_totPRI[:construction_prd]  - JOB_dirPRI[:construction_prd]
+
+
+
+        All_bothJOB[construction_prd:] = JOB_tot[construction_prd:]
+        All_directJOB[construction_prd:] = JOB_dir[construction_prd:]
+        All_indirectJOB[construction_prd:] = JOB_tot[construction_prd:]  - JOB_dir[construction_prd:]
+
+        All_bothJOB[:construction_prd] = JOB_tot[:construction_prd]
+        All_directJOB[:construction_prd] = JOB_dir[:construction_prd]
+        All_indirectJOB[:construction_prd] = JOB_tot[:construction_prd]  - JOB_dir[:construction_prd]
+
+
+
+        result = pd.DataFrame({
+            'Year': Year,
+            'Process Technology': [data['ProcTech']] * project_life,
+            'Plant Size': [data['Plant_Size']] * project_life,
+            'Plant Efficiency': [data['Plant_Effy']] * project_life,
+            'Feedstock Input (TPA)': feedQ,
+            'Product Output (TPA)': prodQ,
+            'Direct GHG Emissions (TPA)': ghg_dir,
+            'Cost Mode': [cost_mode]  * project_life,
+            'Real cumCash Flow': ccflows,
+            'Nominal cumCash Flow': ccflowsk,
+            'Constant$ Breakeven Price': Ps,
+            'Capex portion': [capexContr] * project_life,
+            'Opex portion': [opexContr] * project_life,
+            'Feed portion': [feedContr] * project_life,
+            'Util portion': [utilContr] * project_life,
+            'Bank portion': [bankContr] * project_life,
+            'Tax portion': [taxContr] * project_life,
+            'Other portion': [otherContr] * project_life,
+            'Current$ Breakeven Price': Psk,
+            'Constant$ SC wCredit': Pc,
+            'Current$ SC wCredit': Pck,
+            'Project Finance': [fund_mode] * project_life,
+            'Carbon Valued': [carbon_value] * project_life,
+            'Feedstock Price ($/t)': [data['Feed_Price']] * project_life,
+            'pri_directGDP': np.array(pri_directGDP)/tempNUM,
+            'pri_bothGDP': np.array(pri_bothGDP)/tempNUM,
+            'All_directGDP': np.array(All_directGDP)/tempNUM,
+            'All_bothGDP': np.array(All_bothGDP)/tempNUM,
+            'pri_directPAY': np.array(pri_directPAY)/tempNUM,
+            'pri_bothPAY': np.array(pri_bothPAY)/tempNUM,
+            'All_directPAY': np.array(All_directPAY)/tempNUM,
+            'All_bothPAY': np.array(All_bothPAY)/tempNUM,
+            'pri_directJOB': np.array(pri_directJOB)/tempNUM,
+            'pri_bothJOB': np.array(pri_bothJOB)/tempNUM,
+            'All_directJOB': np.array(All_directJOB)/tempNUM,
+            'All_bothJOB': np.array(All_bothJOB)/tempNUM,
+            'pri_directTAX': np.array(pri_directTAX)/tempNUM,
+            'pri_bothTAX': np.array(pri_bothTAX)/tempNUM
+        })
+        results.append(result)
+
+    # Ensure 'results' is not empty before concatenation.
+    # This handles cases where 'dt' might have been empty, or an error occurred in the loop.
+    if not results:
+        return pd.DataFrame()
+
+    results = pd.concat(results, ignore_index=True)
+
+    return results
