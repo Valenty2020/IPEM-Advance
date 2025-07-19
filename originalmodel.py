@@ -925,7 +925,6 @@ def MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_
 
 
 ############################################################# ANALYTICS MODEL BEGINS ############################################################
-
 def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
     """
     Enhanced analytics model that handles:
@@ -938,7 +937,6 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
     if location is None and product is None:
         # Pure custom mode - use project_data exactly as provided
         dt = project_data.copy()
-        logger.info("Running in FULL CUSTOM MODE (no location/product matching)")
         
     elif location is None:
         raise ValueError("Cannot specify product without location")
@@ -950,9 +948,6 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
             dt = project_data.copy()
             dt['Country'] = location
             dt['Main_Prod'] = 'Custom'
-            logger.warning(f"No data found for location {location}, using custom mode")
-        else:
-            logger.info(f"Running in REGIONAL MODE for {location}")
             
     else:
         # Full sector mode - match both location and product
@@ -962,9 +957,6 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
             dt = project_data.copy()
             dt['Country'] = location
             dt['Main_Prod'] = product
-            logger.warning(f"No match found for {location}/{product}, using custom values")
-        else:
-            logger.info(f"Running in SECTOR MODE for {location}/{product}")
 
     Infl = 0.02  
     tempNUM = 1000000
