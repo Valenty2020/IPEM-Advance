@@ -2,11 +2,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import pandas as pd
+import numpy as np
 import uvicorn
 import logging
 from originalmodel import Analytics_Model2
 
-# Logging setup
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,25 +19,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Pure Payload Economics Model API",
-    description="API for chemical plant analysis using ONLY payload values",
-    version="3.0.0"
+    title="Flexible Economics Model API",
+    description="API that works with or without location/product matching",
+    version="3.1.0"
 )
 
 class AnalysisRequest(BaseModel):
-    # Previously required fields now optional
+    # Optional reference fields
     location: Optional[str] = None
     product: Optional[str] = None
     
-    # Plant configuration
+    # Required technical parameters
     plant_effy: str
     plant_size: str
     plant_mode: str
     fund_mode: str
     opex_mode: str
     carbon_value: str
-    
-    # Economic parameters
     operating_prd: int
     util_operating_first: float
     util_operating_second: float
@@ -50,21 +49,15 @@ class AnalysisRequest(BaseModel):
     baseYear: int
     ownerCost: float
     corpTAX_value: float
-    
-    # Prices
     Feed_Price: float
     Fuel_Price: float
     Elect_Price: float
     CarbonTAX_value: float
     credit_value: float
-    
-    # Capital/Operating
     CAPEX: float
     OPEX: float
     PRIcoef: float
     CONcoef: float
-    
-    # Technical parameters
     EcNatGas: float
     ngCcontnt: float
     eEFF: float
@@ -78,30 +71,32 @@ class AnalysisRequest(BaseModel):
 
 @app.on_event("startup")
 async def startup_event():
-    """Load multiplier data (if still needed for non-payload calculations)"""
+    """Load multiplier data if available"""
     global multipliers
     try:
         multipliers = pd.read_csv("./sectorwise_multipliers.csv")
+        logger.info("Multipliers data loaded successfully")
     except FileNotFoundError:
-        logger.warning("Multipliers file not found - running in pure payload mode")
-        multipliers = pd.DataFrame()
+        logger.warning("No multipliers CSV found - running in standalone mode")
+        # Create empty dataframe with expected columns
+        multipliers = pd.DataFrame(columns=['Country', 'Sector'])
 
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
-    """Run analysis using ONLY payload values"""
+    """Run analysis with flexible location/product handling"""
     config = request.dict()
-    logger.info("Received payload:\n" + "\n".join([f"{k}: {v}" for k,v in config.items()]))
-    
-    # Validate only if provided
+    logger.info(f"Starting analysis with config: {config}")
+
+    # Handle location/product validation
     if config.get("location"):
         if not multipliers.empty and config["location"] not in multipliers['Country'].unique():
-            raise HTTPException(400, "Invalid location specified in multipliers data")
+            logger.warning(f"Location {config['location']} not found in multipliers")
     
     if config.get("product"):
         if not multipliers.empty and config["product"] not in multipliers['Sector'].unique():
-            raise HTTPException(400, "Invalid product specified in multipliers data")
+            logger.warning(f"Product {config['product']} not found in multipliers")
 
-    # Create data row - all values from payload
+    # Create data payload
     data = {
         "Country": config.get("location", "Custom"),
         "Main_Prod": config.get("product", "Custom"),
@@ -128,11 +123,14 @@ async def run_analysis(request: AnalysisRequest):
         "hEFF": config["hEFF"]
     }
 
-    # Run analysis
+    # Convert to DataFrame
+    project_data = pd.DataFrame([data])
+    
+    # Ensure Analytics_Model2 can handle empty multipliers
     try:
         results = Analytics_Model2(
             multiplier=multipliers,
-            project_data=pd.DataFrame([data]),
+            project_data=project_data,
             location=config.get("location"),
             product=config.get("product"),
             plant_mode=config["plant_mode"],
@@ -142,8 +140,12 @@ async def run_analysis(request: AnalysisRequest):
             plant_effy=config["plant_effy"],
             carbon_value=config["carbon_value"]
         )
+        
+        if results.empty:
+            raise ValueError("Analysis returned empty results")
+            
         return results.to_dict(orient='records')
-    
+        
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Analysis error: {str(e)}")
