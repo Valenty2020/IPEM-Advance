@@ -183,10 +183,6 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "hEFF": config["hEFF"]
     }
     
-    logger.info("\nCustom Data Row Created From Payload:")
-    for key, value in data.items():
-        logger.info(f"{key}: {value}")
-    
     return pd.DataFrame([data])
 
 if __name__ == "__main__":
