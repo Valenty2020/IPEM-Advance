@@ -6,6 +6,7 @@ import numpy as np
 import uvicorn
 import logging
 from datetime import datetime
+from originalmodel import Analytic_Model2
 
 # Set up logging
 logging.basicConfig(
