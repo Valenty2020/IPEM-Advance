@@ -930,10 +930,10 @@ import numpy as np
 # This is a conceptual representation of your Analytics_Model2 function.
 # You need to apply these changes to your actual originalmodel.py file.
 
-def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size):
+def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
     """
     Performs economic analysis for a chemical plant.
-    This function has been updated to gracefully handle an optional 'product' parameter.
+    This function has been updated to gracefully handle optional 'product' and 'plant_effy' parameters.
     """
 
     # --- START OF UPDATED LOGIC FOR 'dt' ---
@@ -941,28 +941,24 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
     # created in the API, which is a single-row DataFrame containing all
     # payload-provided parameters.
 
-    # If 'product' is provided and not an empty string, we filter 'project_data'
-    # based on both 'Country' and 'Main_Prod'.
-    # Otherwise, if 'product' is empty or None, we assume the 'project_data'
-    # (i.e., 'custom_data') itself contains the specific row for analysis,
-    # and no further filtering by 'Main_Prod' is needed.
-    if product and product != "":
-        dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
-        # If filtering by product results in an empty DataFrame, it means no matching
-        # data was found. In this case, we return an empty DataFrame to prevent
-        # the 'No objects to concatenate' error later.
-        if dt.empty:
-            print(f"Warning: No data found for location '{location}' and product '{product}'. Returning empty DataFrame.")
-            return pd.DataFrame()
-    else:
-        # If 'product' is not specified, use the 'project_data' directly.
-        # This assumes 'project_data' (which is the single-row 'custom_data' from the API)
-        # already contains the specific data needed for the analysis.
-        dt = project_data
-        # Ensure that 'dt' is not empty, though it should not be if 'custom_data' is always generated.
-        if dt.empty:
-            print(f"Warning: Provided project_data is empty when product is not specified. Returning empty DataFrame.")
-            return pd.DataFrame()
+    # We filter 'project_data' based on 'Country', 'Main_Prod', and 'Plant_Effy'.
+    # If 'product' or 'plant_effy' are not provided in the API payload,
+    # they will be passed as empty strings ("") to this function, and
+    # the corresponding columns in 'project_data' (from custom_data) will also be empty strings.
+    # The comparison "" == "" will evaluate to True, effectively making these filters
+    # non-restrictive when the parameters are not specified.
+    dt = project_data[
+        (project_data['Country'] == location) &
+        (project_data['Main_Prod'] == product) &
+        (project_data['Plant_Effy'] == plant_effy)
+    ]
+
+    # If filtering results in an empty DataFrame, it means no matching data was found
+    # (e.g., if a specific product or efficiency was requested but didn't match the custom_data row).
+    # In this case, we return an empty DataFrame to prevent the 'No objects to concatenate' error later.
+    if dt.empty:
+        print(f"Warning: No matching data found for location '{location}', product '{product}', and plant efficiency '{plant_effy}'. Returning empty DataFrame.")
+        return pd.DataFrame()
     # --- END OF UPDATED LOGIC FOR 'dt' ---
 
 
@@ -1115,3 +1111,4 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
     results = pd.concat(results, ignore_index=True)
 
     return results
+
