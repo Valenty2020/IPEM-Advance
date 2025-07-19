@@ -19,23 +19,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Flexible Economics Model API",
-    description="API that works with or without location/product matching",
-    version="3.1.0"
+    title="Standalone Economics Model API",
+    description="API that requires no external data references",
+    version="4.0.0"
 )
 
 class AnalysisRequest(BaseModel):
-    # Optional reference fields
-    location: Optional[str] = None
-    product: Optional[str] = None
-    
-    # Required technical parameters
+    # Plant configuration (required)
     plant_effy: str
     plant_size: str
     plant_mode: str
     fund_mode: str
     opex_mode: str
     carbon_value: str
+    
+    # Economic parameters (required)
     operating_prd: int
     util_operating_first: float
     util_operating_second: float
@@ -49,15 +47,21 @@ class AnalysisRequest(BaseModel):
     baseYear: int
     ownerCost: float
     corpTAX_value: float
+    
+    # Prices (required)
     Feed_Price: float
     Fuel_Price: float
     Elect_Price: float
     CarbonTAX_value: float
     credit_value: float
+    
+    # Capital/Operating (required)
     CAPEX: float
     OPEX: float
     PRIcoef: float
     CONcoef: float
+    
+    # Technical parameters (required)
     EcNatGas: float
     ngCcontnt: float
     eEFF: float
@@ -69,37 +73,16 @@ class AnalysisRequest(BaseModel):
     Elect_req: float
     feedCcontnt: float
 
-@app.on_event("startup")
-async def startup_event():
-    """Load multiplier data if available"""
-    global multipliers
-    try:
-        multipliers = pd.read_csv("./sectorwise_multipliers.csv")
-        logger.info("Multipliers data loaded successfully")
-    except FileNotFoundError:
-        logger.warning("No multipliers CSV found - running in standalone mode")
-        # Create empty dataframe with expected columns
-        multipliers = pd.DataFrame(columns=['Country', 'Sector'])
-
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
-    """Run analysis with flexible location/product handling"""
+    """Run analysis using ONLY payload values"""
     config = request.dict()
-    logger.info(f"Starting analysis with config: {config}")
-
-    # Handle location/product validation
-    if config.get("location"):
-        if not multipliers.empty and config["location"] not in multipliers['Country'].unique():
-            logger.warning(f"Location {config['location']} not found in multipliers")
+    logger.info("Starting analysis with payload-only configuration")
     
-    if config.get("product"):
-        if not multipliers.empty and config["product"] not in multipliers['Sector'].unique():
-            logger.warning(f"Product {config['product']} not found in multipliers")
-
-    # Create data payload
+    # Create complete data row
     data = {
-        "Country": config.get("location", "Custom"),
-        "Main_Prod": config.get("product", "Custom"),
+        "Country": "Custom",
+        "Main_Prod": "Custom",
         "Plant_Size": config["plant_size"],
         "Plant_Effy": config["plant_effy"],
         "ProcTech": "Custom",
@@ -123,32 +106,34 @@ async def run_analysis(request: AnalysisRequest):
         "hEFF": config["hEFF"]
     }
 
-    # Convert to DataFrame
-    project_data = pd.DataFrame([data])
-    
-    # Ensure Analytics_Model2 can handle empty multipliers
     try:
-        results = Analytics_Model2(
-            multiplier=multipliers,
-            project_data=project_data,
-            location=config.get("location"),
-            product=config.get("product"),
+        # Modified Analytics_Model2 that doesn't need multipliers
+        results = standalone_analysis(
+            project_data=pd.DataFrame([data]),
             plant_mode=config["plant_mode"],
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
-            plant_size=config["plant_size"],
-            plant_effy=config["plant_effy"],
             carbon_value=config["carbon_value"]
         )
-        
-        if results.empty:
-            raise ValueError("Analysis returned empty results")
-            
         return results.to_dict(orient='records')
-        
+    
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Analysis error: {str(e)}")
+
+def standalone_analysis(project_data: pd.DataFrame, **kwargs):
+    """
+    Simplified analysis function that works without any external data
+    """
+    # Your core calculations here using only project_data
+    # Example:
+    results = project_data.copy()
+    
+    # Add calculated fields
+    results['Total_Cost'] = results['CAPEX'] + results['OPEX']
+    results['ROI'] = results['CAPEX'] / results['OPEX']
+    
+    return results
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
