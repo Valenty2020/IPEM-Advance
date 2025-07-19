@@ -27,6 +27,7 @@ app = FastAPI(
 class AnalysisRequest(BaseModel):
     # Required parameters with no defaults
     location: str
+    plant_effy: Optional[str] = None  # Made optional
     plant_size: str
     plant_mode: str
     fund_mode: str
@@ -114,6 +115,7 @@ async def run_analysis(request: AnalysisRequest):
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
             plant_size=config["plant_size"],
+            plant_effy=config.get("plant_effy", ""),  # Handle optional gracefully
             carbon_value=config["carbon_value"]
         )
         
@@ -151,6 +153,10 @@ def validate_parameters(config: dict):
     if config["plant_size"] not in ["Large", "Small"]:
         raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
     
+    if config["plant_effy"] is not None:
+        if config["plant_effy"] not in ["High", "Low"]:
+            raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
+    
     if sum(config["capex_spread"]) != 1.0:
         raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
     
@@ -166,6 +172,7 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "Country": config["location"],
         "Main_Prod": config.get("product", ""),  # Use empty string if product not provided
         "Plant_Size": config["plant_size"],
+        "Plant_Effy": config.get("plant_effy", ""),  # Handle optional gracefully
         "ProcTech": "Custom",
         "Base_Yr": config["baseYear"],
         "Cap": config["Cap"],
