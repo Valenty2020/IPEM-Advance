@@ -4,26 +4,12 @@ from typing import Optional, List
 import pandas as pd
 import numpy as np
 import uvicorn
-import logging
-from fastapi.middleware.cors import CORSMiddleware
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from originalmodel import  Analytics_Model2
 
 app = FastAPI(
     title="Advanced Project Economics Model API",
     description="API for chemical plant economics analysis with customizable parameters",
     version="2.0.0"
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
 )
 
 # Default configuration
@@ -49,21 +35,15 @@ DEFAULT_CONFIG = {
     "baseYear": 2025,
     "ownerCost": 0.10,
     "corpTAX_value": 0.27,
-    "Feed_Price": 88.5,
-    "Fuel_Price": 88.5,
+    "Feed_Price": 712.9,
+    "Fuel_Price": 712.9,
     "Elect_Price": 16.92,
-    "CarbonTAX_value": 56.34,
+    "CarbonTAX_value": 0,
     "credit_value": 0.10,
-    "CAPEX": 1020000000,
-    "OPEX": 19600000,
+    "CAPEX": 1080000000,
+    "OPEX": 33678301.89,
     "PRIcoef": 0.3,
-    "CONcoef": 0.7,
-    "Cap": 1600000,
-    "Yld": 0.875,
-    "feedEcontnt": 53.6,
-    "feedCcontnt": 50,
-    "Heat_req": 11.6,
-    "Elect_req": 0.3
+    "CONcoef": 0.7
 }
 
 class AnalysisRequest(BaseModel):
@@ -97,72 +77,27 @@ class AnalysisRequest(BaseModel):
     OPEX: Optional[float] = None
     PRIcoef: Optional[float] = None
     CONcoef: Optional[float] = None
-    Cap: Optional[float] = None
-    Yld: Optional[float] = None
-    feedEcontnt: Optional[float] = None
-    feedCcontnt: Optional[float] = None
-    Heat_req: Optional[float] = None
-    Elect_req: Optional[float] = None
-
-# Mock Analytics Model if import fails
-try:
-    from originalmodel import Analytics_Model2
-    logger.info("Successfully imported Analytics_Model2")
-except ImportError as e:
-    logger.warning(f"Could not import originalmodel: {str(e)} - Using mock implementation")
-    def Analytics_Model2(*args, **kwargs):
-        mock_data = {
-            "Metric": ["NPV", "IRR", "Payback"],
-            "Value": [1000000, 0.15, 5.2]
-        }
-        return pd.DataFrame(mock_data)
 
 @app.on_event("startup")
 async def startup_event():
-    """Load required data files as fallbacks"""
+    """Load required data files"""
     global project_datas, multipliers
     try:
-        project_datas = pd.read_csv("project_data.csv")
-        logger.info("Successfully loaded project_data.csv")
-    except Exception as e:
-        logger.warning(f"Could not load project_data.csv: {str(e)}")
-        project_datas = pd.DataFrame({
-            "Country": ["USA", "Germany", "China"],
-            "Main_Prod": ["Ethylene", "Propylene", "Methanol"]
-        })
-
-    try:
-        multipliers = pd.read_csv("sectorwise_multipliers.csv")
-        logger.info("Successfully loaded sectorwise_multipliers.csv")
-    except Exception as e:
-        logger.warning(f"Could not load sectorwise_multipliers.csv: {str(e)}")
-        multipliers = pd.DataFrame({
-            "Sector": ["Chemicals", "Energy"],
-            "Multiplier": [1.2, 1.5]
-        })
+        project_datas = pd.read_csv("./project_data.csv")
+        multipliers = pd.read_csv("./sectorwise_multipliers.csv")
+    except FileNotFoundError as e:
+        raise Exception(f"Required data files not found: {str(e)}")
 
 @app.get("/")
 async def root():
-    """Root endpoint with API information"""
     return {
         "message": "Advanced Project Economics Model API",
         "endpoints": {
-            "/test": {"method": "GET", "description": "Test endpoint"},
-            "/analyze": {"method": "POST", "description": "Run economic analysis"},
-            "/defaults": {"method": "GET", "description": "View default parameters"},
-            "/locations": {"method": "GET", "description": "List available countries"},
-            "/products": {"method": "GET", "description": "List available products"}
-        },
-        "status": "active"
-    }
-
-@app.get("/test")
-async def test_endpoint():
-    """Test endpoint to verify API is working"""
-    return {
-        "status": "success",
-        "message": "API is functioning correctly",
-        "data": {"sample_value": 42}
+            "/analyze": "POST - Run economic analysis with customizable parameters",
+            "/defaults": "GET - View default parameter values",
+            "/locations": "GET - List available countries",
+            "/products": "GET - List available products"
+        }
     }
 
 @app.get("/defaults")
@@ -173,24 +108,16 @@ async def get_defaults():
 @app.get("/locations")
 async def get_locations():
     """Get list of available countries/locations"""
-    try:
-        locations = project_datas['Country'].unique().tolist()
-        return {"locations": locations}
-    except Exception as e:
-        logger.error(f"Error getting locations: {str(e)}")
-        return {"locations": [], "error": str(e)}
+    locations = project_datas['Country'].unique().tolist()
+    return {"locations": locations}
 
 @app.get("/products")
 async def get_products():
     """Get list of available products"""
-    try:
-        products = project_datas['Main_Prod'].unique().tolist()
-        return {"products": products}
-    except Exception as e:
-        logger.error(f"Error getting products: {str(e)}")
-        return {"products": [], "error": str(e)}
+    products = project_datas['Main_Prod'].unique().tolist()
+    return {"products": products}
 
-@app.post("/analyze")
+@app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
     """
     Run economic analysis with customizable parameters.
@@ -202,27 +129,14 @@ async def run_analysis(request: AnalysisRequest):
     provided_params = request.dict(exclude_unset=True)
     config.update(provided_params)
     
-    # Log missing parameters
-    log_missing_parameters(provided_params, config)
-    
     # Validate parameters
-    try:
-        validate_parameters(config)
-    except HTTPException as e:
-        logger.error(f"Parameter validation failed: {e.detail}")
-        raise
+    validate_parameters(config)
     
     # Create a data row with the custom parameters
-    try:
-        custom_data = create_custom_data_row(config, provided_params)
-        logger.info("Successfully created custom data row")
-    except Exception as e:
-        logger.error(f"Error creating custom data: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Error creating input data: {str(e)}")
+    custom_data = create_custom_data_row(config)
     
     # Run analysis
     try:
-        logger.info("Starting analysis...")
         results = Analytics_Model2(
             multiplier=multipliers,
             project_data=custom_data,
@@ -236,114 +150,76 @@ async def run_analysis(request: AnalysisRequest):
             carbon_value=config["carbon_value"]
         )
         
-        logger.info("Analysis completed successfully")
         return results.to_dict(orient='records')
     
     except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
-
-def log_missing_parameters(provided_params: dict, config: dict):
-    """Log which parameters are missing and what fallback was used"""
-    required_fields = [
-        'Cap', 'Yld', 'Base_Yr', 'CAPEX', 'OPEX', 'Feed_Price',
-        'Heat_req', 'Elect_req', 'Fuel_Price', 'Elect_Price',
-        'feedEcontnt', 'feedCcontnt', 'corpTAX', 'CO2price'
-    ]
-    
-    for field in required_fields:
-        if field not in provided_params:
-            source = "DEFAULT_CONFIG"
-            if field in ['feedEcontnt', 'feedCcontnt', 'Heat_req', 'Elect_req']:
-                try:
-                    if config["location"] in project_datas['Country'].unique() and \
-                       config["product"] in project_datas['Main_Prod'].unique():
-                        source = "project_data.csv"
-                except:
-                    pass
-            
-            logger.info(f"Parameter '{field}' not provided - using value from {source}: {config[field]}")
+        raise HTTPException(status_code=500, detail=f"Error running analysis: {str(e)}")
 
 def validate_parameters(config: dict):
     """Validate all configuration parameters"""
-    # Only validate location/product if we're not providing all custom data
-    required_tech_params = ['feedEcontnt', 'feedCcontnt', 'Heat_req', 'Elect_req']
-    if not all(k in config for k in required_tech_params):
-        try:
-            if "location" in config and config["location"] not in project_datas['Country'].unique():
-                raise HTTPException(status_code=400, detail=f"Invalid location: {config['location']}")
-            
-            if "product" in config and config["product"] not in project_datas['Main_Prod'].unique():
-                raise HTTPException(status_code=400, detail=f"Invalid product: {config['product']}")
-        except Exception as e:
-            if not all(k in config for k in required_tech_params):
-                missing = [k for k in required_tech_params if k not in config]
-                raise HTTPException(
-                    status_code=400, 
-                    detail=f"Missing required parameters: {', '.join(missing)}. Either provide these or ensure location/product exist in project data"
-                )
+    if config["location"] not in project_datas['Country'].unique():
+        raise HTTPException(status_code=400, detail="Invalid location")
     
-    if "plant_mode" in config and config["plant_mode"] not in ["Green", "Brown"]:
+    if config["product"] not in project_datas['Main_Prod'].unique():
+        raise HTTPException(status_code=400, detail="Invalid product")
+    
+    if config["plant_mode"] not in ["Green", "Brown"]:
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
     
-    if "fund_mode" in config and config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
+    if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
         raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
     
-    if "opex_mode" in config and config["opex_mode"] not in ["Inflated", "Uninflated"]:
+    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
         raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
     
-    if "carbon_value" in config and config["carbon_value"] not in ["Yes", "No"]:
+    if config["carbon_value"] not in ["Yes", "No"]:
         raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
     
-    if "plant_size" in config and config["plant_size"] not in ["Large", "Small", None]:
+    if config["plant_size"] not in ["Large", "Small", None]:
         raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
     
-    if "plant_effy" in config and config["plant_effy"] not in ["High", "Low", None]:
+    if config["plant_effy"] not in ["High", "Low", None]:
         raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
     
-    if "capex_spread" in config and abs(sum(config["capex_spread"]) - 1.0) > 0.001:  # Allow for floating point precision
+    if sum(config["capex_spread"]) != 1.0:
         raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
 
-def create_custom_data_row(config: dict, provided_params: dict) -> pd.DataFrame:
+def create_custom_data_row(config: dict) -> pd.DataFrame:
     """Create a custom data row from the configuration"""
-    # Start with default values from CSV if available
-    try:
-        if "location" in config and "product" in config:
-            base_data = project_datas[
-                (project_datas['Country'] == config["location"]) & 
-                (project_datas['Main_Prod'] == config["product"])
-            ].iloc[0].to_dict()
-            logger.debug(f"Found base data for {config['location']}/{config['product']}")
-        else:
-            base_data = {}
-    except Exception as e:
-        logger.warning(f"Could not find base data: {str(e)}")
-        base_data = {}
-    
-    # Create the data structure
     data = {
-        "Country": str(config.get("location", DEFAULT_CONFIG["location"])),
-        "Main_Prod": str(config.get("product", DEFAULT_CONFIG["product"])),
-        "Plant_Size": str(config.get("plant_size", DEFAULT_CONFIG["plant_size"])),
-        "Plant_Effy": str(config.get("plant_effy", DEFAULT_CONFIG["plant_effy"])),
-        "ProcTech": "Custom",
-        "Base_Yr": int(config.get("baseYear", DEFAULT_CONFIG["baseYear"])),
-        "Cap": float(config.get("Cap", DEFAULT_CONFIG["Cap"])),
-        "Yld": float(config.get("Yld", DEFAULT_CONFIG["Yld"])),
-        "feedEcontnt": float(config.get("feedEcontnt", base_data.get("feedEcontnt", DEFAULT_CONFIG["feedEcontnt"]))),
-        "feedCcontnt": float(config.get("feedCcontnt", base_data.get("feedCcontnt", DEFAULT_CONFIG["feedCcontnt"]))),
-        "Heat_req": float(config.get("Heat_req", base_data.get("Heat_req", DEFAULT_CONFIG["Heat_req"]))),
-        "Elect_req": float(config.get("Elect_req", base_data.get("Elect_req", DEFAULT_CONFIG["Elect_req"]))),
-        "Feed_Price": float(config.get("Feed_Price", DEFAULT_CONFIG["Feed_Price"])),
-        "Fuel_Price": float(config.get("Fuel_Price", DEFAULT_CONFIG["Fuel_Price"])),
-        "Elect_Price": float(config.get("Elect_Price", DEFAULT_CONFIG["Elect_Price"])),
-        "CO2price": float(config.get("CarbonTAX_value", DEFAULT_CONFIG["CarbonTAX_value"])),
-        "corpTAX": float(config.get("corpTAX_value", DEFAULT_CONFIG["corpTAX_value"])),
-        "CAPEX": float(config.get("CAPEX", DEFAULT_CONFIG["CAPEX"])),
-        "OPEX": float(config.get("OPEX", DEFAULT_CONFIG["OPEX"])),
+        "Country": config["location"],
+        "Main_Prod": config["product"],
+        "Plant_Size": config["plant_size"],
+        "Plant_Effy": config["plant_effy"],
+        "ProcTech": "Custom",  # Mark as custom configuration
+        "Base_Yr": config["baseYear"],
+        "Cap": 1,  # Capacity - will be scaled by CAPEX
+        "Yld": 1,  # Yield - adjust based on efficiency
+        "feedEcontnt": 0,  # Will be calculated
+        "feedCcontnt": 0,  # Will be calculated
+        "Heat_req": 0,  # Will be calculated
+        "Elect_req": 0,  # Will be calculated
+        "Feed_Price": config["Feed_Price"],
+        "Fuel_Price": config["Fuel_Price"],
+        "Elect_Price": config["Elect_Price"],
+        "CO2price": config["CarbonTAX_value"],
+        "corpTAX": config["corpTAX_value"],
+        "CAPEX": config["CAPEX"],
+        "OPEX": config["OPEX"],
+        # Additional calculated fields would go here
     }
+    
+    # Adjust yield based on efficiency
+    if config["plant_effy"] == "High":
+        data["Yld"] = 0.9  # 90% yield for high efficiency
+    else:
+        data["Yld"] = 0.7  # 70% yield for low efficiency
     
     return pd.DataFrame([data])
 
+# Include all your model functions here (ChemProcess_Model, MicroEconomic_Model, MacroEconomic_Model, Analytics_Model2)
+# ... [paste all the model functions from your original code here] ...
+# NOTE: You'll need to modify these functions to use the parameters from the config
+
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
