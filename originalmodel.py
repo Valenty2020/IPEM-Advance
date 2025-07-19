@@ -922,71 +922,57 @@ def MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_
   ####################### Taxation Impacts END ##################
 
 ############################################################# MACROECONOMIC MODEL ENDS ############################################################
-
-
-import pandas as pd
-import numpy as np
-
-# This is a conceptual representation of your Analytics_Model2 function.
-# You need to apply these changes to your actual originalmodel.py file.
-
 def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
     """
     Performs economic analysis for a chemical plant.
-    This function has been updated to gracefully handle an optional 'product' parameter.
+    This function has been updated to gracefully handle optional 'product', 'plant_size', and 'plant_effy' parameters.
     """
 
-    # --- START OF UPDATED LOGIC FOR 'dt' ---
+    # --- START OF UPDATED FILTERING LOGIC ---
     # The 'project_data' passed to this function is the 'custom_data' DataFrame
     # created in the API, which is a single-row DataFrame containing all
     # payload-provided parameters.
 
-    # If 'product' is provided and not an empty string, we filter 'project_data'
-    # based on both 'Country' and 'Main_Prod'.
-    # Otherwise, if 'product' is empty or None, we assume the 'project_data'
-    # (i.e., 'custom_data') itself contains the specific row for analysis,
-    # and no further filtering by 'Main_Prod' is needed.
+    # Create a copy to avoid modifying the original
+    dt_filtered = project_data.copy()
+    
+    # Apply filters only if parameters are provided and not empty
+    if location:
+        dt_filtered = dt_filtered[dt_filtered['Country'] == location]
+    
     if product and product != "":
-        dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
-        # If filtering by product results in an empty DataFrame, it means no matching
-        # data was found. In this case, we return an empty DataFrame to prevent
-        # the 'No objects to concatenate' error later.
-        if dt.empty:
-            print(f"Warning: No data found for location '{location}' and product '{product}'. Returning empty DataFrame.")
-            return pd.DataFrame()
-    else:
-        # If 'product' is not specified, use the 'project_data' directly.
-        # This assumes 'project_data' (which is the single-row 'custom_data' from the API)
-        # already contains the specific data needed for the analysis.
-        dt = project_data
-        # Ensure that 'dt' is not empty, though it should not be if 'custom_data' is always generated.
-        if dt.empty:
-            print(f"Warning: Provided project_data is empty when product is not specified. Returning empty DataFrame.")
-            return pd.DataFrame()
-    # --- END OF UPDATED LOGIC FOR 'dt' ---
+        dt_filtered = dt_filtered[dt_filtered['Main_Prod'] == product]
+    
+    if plant_size and plant_size != "":
+        dt_filtered = dt_filtered[dt_filtered['Plant_Size'] == plant_size]
+    
+    if plant_effy and plant_effy != "":
+        dt_filtered = dt_filtered[dt_filtered['Plant_Effy'] == plant_effy]
 
+    # If filtering resulted in empty DataFrame and we have custom data (single row), use that instead
+    if dt_filtered.empty and len(project_data) == 1:
+        dt = project_data
+    else:
+        dt = dt_filtered
+
+    # If still empty, return empty DataFrame
+    if dt.empty:
+        print(f"Warning: No data found for the specified filters. Returning empty DataFrame.")
+        return pd.DataFrame()
+    # --- END OF UPDATED FILTERING LOGIC ---
 
     Infl = 0.02
-
     tempNUM = 1000000
-    results=[]
-    for index, data in dt.iterrows(): # This loop will now correctly iterate over the determined 'dt'
-                                      # (either filtered or the original custom_data).
-
-        # Placeholder calls for your existing models.
-        # Ensure these functions (ChemProcess_Model, MicroEconomic_Model, MacroEconomic_Model)
-        # are defined elsewhere in originalmodel.py and are robust enough to handle 'data'.
-        # Assuming these functions are correctly implemented and return the expected values.
+    results = []
+    
+    for index, data in dt.iterrows():
         try:
             prodQ, feedQ, Rheat, netHeat, Relec, ghg_dir, ghg_ind = ChemProcess_Model(data)
             Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, utilContr, bankContr, taxContr, otherContr, cshflw, cshflw2, Year, project_life, construction_prd, Yrly_invsmt, bank_chrg, NetRevn, tax_pybl = MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value)
             GDP_dir, GDP_ind, GDP_tot, JOB_dir, JOB_ind, JOB_tot, PAY_dir, PAY_ind, PAY_tot, TAX_dir, TAX_ind, TAX_tot, GDP_totPRI, JOB_totPRI, PAY_totPRI, GDP_dirPRI, JOB_dirPRI, PAY_dirPRI = MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_mode, carbon_value)
         except Exception as e:
             print(f"Error during model execution for data row: {data.to_dict()}. Error: {e}")
-            # Depending on your error handling strategy, you might want to skip this row
-            # or raise a more specific exception. For now, we'll continue, but this row
-            # won't contribute to 'results'.
-            continue # Skip to the next iteration if an error occurs
+            continue
 
         Yrly_cost = np.array(Yrly_invsmt) + np.array(bank_chrg)
 
@@ -999,10 +985,8 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
             Psk[i] = Pso * ((1 + Infl) ** i)
             Pck[i] = Pco * ((1 + Infl) ** i)
 
-
         Rs = [Ps[i] * prodQ[i] for i in range(project_life)]
         NRs = [Rs[i] - Yrly_cost[i] for i in range(project_life)]
-
 
         Rsk = Psk * prodQ
         NRsk = Rsk - Yrly_cost
@@ -1016,7 +1000,6 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
         else:
             cost_mode = cost_modes[1]
 
-
         pri_bothJOB = [0] * project_life
         pri_directJOB = [0] * project_life
         pri_indirectJOB = [0] * project_life
@@ -1029,7 +1012,7 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
         pri_directGDP = GDP_dirPRI
         pri_indirectGDP = GDP_totPRI - GDP_dirPRI
         All_bothGDP = GDP_tot
-        All_directGDP =  GDP_dir
+        All_directGDP = GDP_dir
         All_indirectGDP = GDP_tot - GDP_dir
 
         pri_bothTAX = TAX_tot
@@ -1043,27 +1026,21 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
         All_directPAY = PAY_dir
         All_indirectPAY = PAY_tot - PAY_dir
 
-
-
         pri_bothJOB[construction_prd:] = JOB_totPRI[construction_prd:]
         pri_directJOB[construction_prd:] = JOB_dirPRI[construction_prd:]
-        pri_indirectJOB[construction_prd:] = JOB_totPRI[construction_prd:]  - JOB_dirPRI[construction_prd:]
+        pri_indirectJOB[construction_prd:] = JOB_totPRI[construction_prd:] - JOB_dirPRI[construction_prd:]
 
         pri_bothJOB[:construction_prd] = JOB_totPRI[:construction_prd]
         pri_directJOB[:construction_prd] = JOB_dirPRI[:construction_prd]
-        pri_indirectJOB[:construction_prd] = JOB_totPRI[:construction_prd]  - JOB_dirPRI[:construction_prd]
-
-
+        pri_indirectJOB[:construction_prd] = JOB_totPRI[:construction_prd] - JOB_dirPRI[:construction_prd]
 
         All_bothJOB[construction_prd:] = JOB_tot[construction_prd:]
         All_directJOB[construction_prd:] = JOB_dir[construction_prd:]
-        All_indirectJOB[construction_prd:] = JOB_tot[construction_prd:]  - JOB_dir[construction_prd:]
+        All_indirectJOB[construction_prd:] = JOB_tot[construction_prd:] - JOB_dir[construction_prd:]
 
         All_bothJOB[:construction_prd] = JOB_tot[:construction_prd]
         All_directJOB[:construction_prd] = JOB_dir[:construction_prd]
-        All_indirectJOB[:construction_prd] = JOB_tot[:construction_prd]  - JOB_dir[:construction_prd]
-
-
+        All_indirectJOB[:construction_prd] = JOB_tot[:construction_prd] - JOB_dir[:construction_prd]
 
         result = pd.DataFrame({
             'Year': Year,
@@ -1073,7 +1050,7 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
             'Feedstock Input (TPA)': feedQ,
             'Product Output (TPA)': prodQ,
             'Direct GHG Emissions (TPA)': ghg_dir,
-            'Cost Mode': [cost_mode]  * project_life,
+            'Cost Mode': [cost_mode] * project_life,
             'Real cumCash Flow': ccflows,
             'Nominal cumCash Flow': ccflowsk,
             'Constant$ Breakeven Price': Ps,
@@ -1107,11 +1084,8 @@ def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fu
         })
         results.append(result)
 
-    # Ensure 'results' is not empty before concatenation.
-    # This handles cases where 'dt' might have been empty, or an error occurred in the loop.
     if not results:
         return pd.DataFrame()
 
     results = pd.concat(results, ignore_index=True)
-
     return results
