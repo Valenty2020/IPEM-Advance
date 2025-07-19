@@ -7,7 +7,7 @@ from originalmodel import Analytics_Model2
 
 app = FastAPI(
     title="Project Economics Model API",
-    description="API for chemical plant economics analysis - Strict Payload Only",
+    description="API for chemical plant economics analysis",
     version="2.0.0"
 )
 
@@ -58,35 +58,59 @@ class AnalysisRequest(BaseModel):
     Elect_req: float = 0.0
     feedCcontnt: float = 0.0
 
-# Global variables for data
+# Global data storage
 project_datas = None
 multipliers = None
 
 @app.on_event("startup")
 async def startup_event():
-    """Load required data files"""
     global project_datas, multipliers
     try:
         project_datas = pd.read_csv("./project_data.csv")
         multipliers = pd.read_csv("./sectorwise_multipliers.csv")
-        print("Data files loaded successfully")
     except Exception as e:
-        print(f"Error loading data files: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error loading data files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Data load failed: {str(e)}")
 
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
-    """Run economic analysis using the provided payload values"""
     try:
         config = request.dict()
-        print("\n=== PAYLOAD VALUES RECEIVED ===")
-        for key, value in config.items():
-            print(f"{key}: {value}")
         
-        validate_parameters(config)
-        custom_data = create_custom_data_row(config)
+        # Validate inputs
+        if config["location"] not in project_datas['Country'].unique():
+            raise HTTPException(status_code=400, detail="Invalid location")
+        if config.get("product") and config["product"] not in project_datas['Main_Prod'].unique():
+            raise HTTPException(status_code=400, detail="Invalid product")
         
-        print("Starting analysis...")
+        # Create data row
+        data = {
+            "Country": config["location"],
+            "Main_Prod": config.get("product", ""),
+            "Plant_Size": config["plant_size"],
+            "Plant_Effy": config["plant_effy"],
+            "ProcTech": "Custom",
+            "Base_Yr": config["baseYear"],
+            "Cap": config["Cap"],
+            "Yld": config["Yld"],
+            "feedEcontnt": config["feedEcontnt"],
+            "feedCcontnt": config["feedCcontnt"],
+            "Heat_req": config["Heat_req"],
+            "Elect_req": config["Elect_req"],
+            "Feed_Price": config["Feed_Price"],
+            "Fuel_Price": config["Fuel_Price"],
+            "Elect_Price": config["Elect_Price"],
+            "CO2price": config["CarbonTAX_value"],
+            "corpTAX": config["corpTAX_value"],
+            "CAPEX": config["CAPEX"],
+            "OPEX": config["OPEX"],
+            "EcNatGas": config["EcNatGas"],
+            "ngCcontnt": config["ngCcontnt"],
+            "eEFF": config["eEFF"],
+            "hEFF": config["hEFF"]
+        }
+        custom_data = pd.DataFrame([data])
+        
+        # Run analysis
         results = Analytics_Model2(
             multiplier=multipliers,
             project_data=custom_data,
@@ -100,74 +124,12 @@ async def run_analysis(request: AnalysisRequest):
             carbon_value=config["carbon_value"]
         )
         
-        print("Analysis completed successfully")
         return results.to_dict(orient='records')
     
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error running analysis: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
-
-def validate_parameters(config: dict):
-    """Validate payload parameters"""
-    if config["location"] not in project_datas['Country'].unique():
-        raise HTTPException(status_code=400, detail="Invalid location")
-    
-    if config.get("product") and config["product"] not in project_datas['Main_Prod'].unique():
-        raise HTTPException(status_code=400, detail="Invalid product")
-    
-    if config["plant_mode"] not in ["Green", "Brown"]:
-        raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
-    
-    if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
-        raise HTTPException(status_code=400, detail="Invalid fund_mode")
-    
-    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
-        raise HTTPException(status_code=400, detail="Invalid opex_mode")
-    
-    if config["carbon_value"] not in ["Yes", "No"]:
-        raise HTTPException(status_code=400, detail="Invalid carbon_value")
-    
-    if config["plant_size"] not in ["Large", "Small"]:
-        raise HTTPException(status_code=400, detail="Invalid plant_size")
-    
-    if config["plant_effy"] not in ["High", "Low"]:
-        raise HTTPException(status_code=400, detail="Invalid plant_effy")
-
-def create_custom_data_row(config: dict) -> pd.DataFrame:
-    """Create data row from payload values"""
-    data = {
-        "Country": config["location"],
-        "Main_Prod": config.get("product", ""),
-        "Plant_Size": config["plant_size"],
-        "Plant_Effy": config["plant_effy"],
-        "ProcTech": "Custom",
-        "Base_Yr": config["baseYear"],
-        "Cap": config["Cap"],
-        "Yld": config["Yld"],
-        "feedEcontnt": config["feedEcontnt"],
-        "feedCcontnt": config["feedCcontnt"],
-        "Heat_req": config["Heat_req"],
-        "Elect_req": config["Elect_req"],
-        "Feed_Price": config["Feed_Price"],
-        "Fuel_Price": config["Fuel_Price"],
-        "Elect_Price": config["Elect_Price"],
-        "CO2price": config["CarbonTAX_value"],
-        "corpTAX": config["corpTAX_value"],
-        "CAPEX": config["CAPEX"],
-        "OPEX": config["OPEX"],
-        "EcNatGas": config["EcNatGas"],
-        "ngCcontnt": config["ngCcontnt"],
-        "eEFF": config["eEFF"],
-        "hEFF": config["hEFF"]
-    }
-    
-    print("\nCustom Data Row Created:")
-    for key, value in data.items():
-        print(f"{key}: {value}")
-    
-    return pd.DataFrame([data])
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
