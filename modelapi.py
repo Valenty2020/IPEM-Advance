@@ -19,21 +19,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Standalone Economics Model API",
-    description="API that requires no external data references",
-    version="4.0.0"
+    title="Direct Payload Economics API",
+    description="API that bypasses all external data dependencies",
+    version="4.1.0"
 )
 
 class AnalysisRequest(BaseModel):
-    # Plant configuration (required)
+    # All parameters now required (no optional fields)
     plant_effy: str
     plant_size: str
     plant_mode: str
     fund_mode: str
     opex_mode: str
     carbon_value: str
-    
-    # Economic parameters (required)
     operating_prd: int
     util_operating_first: float
     util_operating_second: float
@@ -47,21 +45,15 @@ class AnalysisRequest(BaseModel):
     baseYear: int
     ownerCost: float
     corpTAX_value: float
-    
-    # Prices (required)
     Feed_Price: float
     Fuel_Price: float
     Elect_Price: float
     CarbonTAX_value: float
     credit_value: float
-    
-    # Capital/Operating (required)
     CAPEX: float
     OPEX: float
     PRIcoef: float
     CONcoef: float
-    
-    # Technical parameters (required)
     EcNatGas: float
     ngCcontnt: float
     eEFF: float
@@ -75,65 +67,78 @@ class AnalysisRequest(BaseModel):
 
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
-    """Run analysis using ONLY payload values"""
+    """Run analysis using ONLY the provided payload values"""
     config = request.dict()
-    logger.info("Starting analysis with payload-only configuration")
+    logger.info("Starting direct payload analysis")
     
-    # Create complete data row
-    data = {
-        "Country": "Custom",
-        "Main_Prod": "Custom",
-        "Plant_Size": config["plant_size"],
-        "Plant_Effy": config["plant_effy"],
-        "ProcTech": "Custom",
-        "Base_Yr": config["baseYear"],
-        "Cap": config["Cap"],
+    # Create the complete analysis input
+    analysis_data = {
+        "CAPEX": config["CAPEX"],
+        "OPEX": config["OPEX"],
         "Yld": config["Yld"],
-        "feedEcontnt": config["feedEcontnt"],
-        "feedCcontnt": config["feedCcontnt"],
-        "Heat_req": config["Heat_req"],
-        "Elect_req": config["Elect_req"],
+        "Cap": config["Cap"],
         "Feed_Price": config["Feed_Price"],
         "Fuel_Price": config["Fuel_Price"],
         "Elect_Price": config["Elect_Price"],
-        "CO2price": config["CarbonTAX_value"],
+        "Heat_req": config["Heat_req"],
+        "Elect_req": config["Elect_req"],
         "corpTAX": config["corpTAX_value"],
-        "CAPEX": config["CAPEX"],
-        "OPEX": config["OPEX"],
-        "EcNatGas": config["EcNatGas"],
-        "ngCcontnt": config["ngCcontnt"],
-        "eEFF": config["eEFF"],
-        "hEFF": config["hEFF"]
+        "CO2price": config["CarbonTAX_value"],
+        "operating_prd": config["operating_prd"],
+        "utilization": [
+            config["util_operating_first"],
+            config["util_operating_second"],
+            config["util_operating_third"]
+        ],
+        "infl": config["infl"],
+        "RR": config["RR"],
+        "IRR": config["IRR"],
+        "construction_prd": config["construction_prd"],
+        "capex_spread": config["capex_spread"],
+        "shrDebt": config["shrDebt_value"],
+        "credit": config["credit_value"],
+        "plant_mode": config["plant_mode"],
+        "fund_mode": config["fund_mode"],
+        "opex_mode": config["opex_mode"],
+        "carbon_value": config["carbon_value"]
     }
 
     try:
-        # Modified Analytics_Model2 that doesn't need multipliers
-        results = standalone_analysis(
-            project_data=pd.DataFrame([data]),
-            plant_mode=config["plant_mode"],
-            fund_mode=config["fund_mode"],
-            opex_mode=config["opex_mode"],
-            carbon_value=config["carbon_value"]
-        )
-        return results.to_dict(orient='records')
-    
+        # Direct calculations without DataFrame concatenation
+        results = calculate_economics(analysis_data)
+        return [results]  # Return as list to match response_model
+        
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}", exc_info=True)
         raise HTTPException(500, f"Analysis error: {str(e)}")
 
-def standalone_analysis(project_data: pd.DataFrame, **kwargs):
-    """
-    Simplified analysis function that works without any external data
-    """
-    # Your core calculations here using only project_data
-    # Example:
-    results = project_data.copy()
+def calculate_economics(data: dict) -> dict:
+    """Core calculation logic without DataFrame dependencies"""
+    # Example calculations - replace with your actual formulas
+    annual_production = data["Cap"] * data["Yld"] * 365  # Tons/year
+    annual_opex = data["OPEX"] * (1 + data["infl"])**data["operating_prd"]
     
-    # Add calculated fields
-    results['Total_Cost'] = results['CAPEX'] + results['OPEX']
-    results['ROI'] = results['CAPEX'] / results['OPEX']
-    
-    return results
+    return {
+        "annual_production": annual_production,
+        "annual_opex": annual_opex,
+        "capex_breakdown": {
+            "year1": data["CAPEX"] * data["capex_spread"][0],
+            "year2": data["CAPEX"] * data["capex_spread"][1],
+            "year3": data["CAPEX"] * data["capex_spread"][2]
+        },
+        "npv": calculate_npv(data),  # Implement your NPV calculation
+        "irr": data["IRR"],
+        "plant_config": {
+            "mode": data["plant_mode"],
+            "funding": data["fund_mode"],
+            "carbon_policy": data["carbon_value"]
+        }
+    }
+
+def calculate_npv(data: dict) -> float:
+    """Example NPV calculation - replace with your actual formula"""
+    # Dummy implementation
+    return data["CAPEX"] * 0.8  # Replace with real NPV calculation
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
