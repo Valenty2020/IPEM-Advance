@@ -27,8 +27,8 @@ app = FastAPI(
 class AnalysisRequest(BaseModel):
     # Required parameters with no defaults
     location: str
-    plant_effy: str
-    plant_size: str
+    plant_effy: Optional[str] = None
+    plant_size: Optional[str] = None
     plant_mode: str
     fund_mode: str
     opex_mode: str
@@ -89,7 +89,7 @@ async def startup_event():
 async def run_analysis(request: AnalysisRequest):
     """
     Run economic analysis using ONLY the provided payload values.
-    All parameters are required except product - no defaults will be used.
+    All parameters are required except product, plant_size, and plant_effy - no defaults will be used.
     """
     # Convert request to dict and log everything
     config = request.dict()
@@ -114,8 +114,8 @@ async def run_analysis(request: AnalysisRequest):
             plant_mode=config["plant_mode"],
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
-            plant_size=config["plant_size"],
-            plant_effy=config["plant_effy"],
+            plant_size=config.get("plant_size", ""),  # Use empty string if plant_size not provided
+            plant_effy=config.get("plant_effy", ""),  # Use empty string if plant_effy not provided
             carbon_value=config["carbon_value"]
         )
         
@@ -138,6 +138,16 @@ def validate_parameters(config: dict):
             logger.error(f"Invalid product: {config['product']}")
             raise HTTPException(status_code=400, detail="Invalid product")
     
+    # Only validate plant_size if it's provided
+    if "plant_size" in config and config["plant_size"] is not None:
+        if config["plant_size"] not in ["Large", "Small"]:
+            raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
+    
+    # Only validate plant_effy if it's provided
+    if "plant_effy" in config and config["plant_effy"] is not None:
+        if config["plant_effy"] not in ["High", "Low"]:
+            raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
+    
     if config["plant_mode"] not in ["Green", "Brown"]:
         raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
     
@@ -149,12 +159,6 @@ def validate_parameters(config: dict):
     
     if config["carbon_value"] not in ["Yes", "No"]:
         raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
-    
-    if config["plant_size"] not in ["Large", "Small"]:
-        raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
-    
-    if config["plant_effy"] not in ["High", "Low"]:
-        raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
     
     if sum(config["capex_spread"]) != 1.0:
         raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
@@ -170,8 +174,8 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
     data = {
         "Country": config["location"],
         "Main_Prod": config.get("product", ""),  # Use empty string if product not provided
-        "Plant_Size": config["plant_size"],
-        "Plant_Effy": config["plant_effy"],
+        "Plant_Size": config.get("plant_size", ""),  # Use empty string if plant_size not provided
+        "Plant_Effy": config.get("plant_effy", ""),  # Use empty string if plant_effy not provided
         "ProcTech": "Custom",
         "Base_Yr": config["baseYear"],
         "Cap": config["Cap"],
