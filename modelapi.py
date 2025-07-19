@@ -4,7 +4,20 @@ from typing import Optional, List
 import pandas as pd
 import numpy as np
 import uvicorn
-from originalmodel import  Analytics_Model2
+import logging
+from datetime import datetime
+from originalmodel import Analytics_Model2
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('analysis_logs.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Advanced Project Economics Model API",
@@ -85,7 +98,9 @@ async def startup_event():
     try:
         project_datas = pd.read_csv("./project_data.csv")
         multipliers = pd.read_csv("./sectorwise_multipliers.csv")
+        logger.info("Data files loaded successfully")
     except FileNotFoundError as e:
+        logger.error(f"Required data files not found: {str(e)}")
         raise Exception(f"Required data files not found: {str(e)}")
 
 @app.get("/")
@@ -135,6 +150,9 @@ async def run_analysis(request: AnalysisRequest):
     # Create a data row with the custom parameters
     custom_data = create_custom_data_row(config)
     
+    # Log all parameters before running analysis
+    log_parameters(config, custom_data)
+    
     # Run analysis
     try:
         results = Analytics_Model2(
@@ -153,6 +171,7 @@ async def run_analysis(request: AnalysisRequest):
         return results.to_dict(orient='records')
     
     except Exception as e:
+        logger.error(f"Error running analysis: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error running analysis: {str(e)}")
 
 def validate_parameters(config: dict):
@@ -206,6 +225,8 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "corpTAX": config["corpTAX_value"],
         "CAPEX": config["CAPEX"],
         "OPEX": config["OPEX"],
+        "PRIcoef": config["PRIcoef"],
+        "CONcoef": config["CONcoef"],
         # Additional calculated fields would go here
     }
     
@@ -217,9 +238,56 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
     
     return pd.DataFrame([data])
 
-# Include all your model functions here (ChemProcess_Model, MicroEconomic_Model, MacroEconomic_Model, Analytics_Model2)
-# ... [paste all the model functions from your original code here] ...
-# NOTE: You'll need to modify these functions to use the parameters from the config
+def log_parameters(config: dict, custom_data: pd.DataFrame):
+    """Log all parameters used for the analysis"""
+    log_data = {
+        "timestamp": datetime.now().isoformat(),
+        "country": config["location"],
+        "product": config["product"],
+        "plant_mode": config["plant_mode"],
+        "fund_mode": config["fund_mode"],
+        "opex_mode": config["opex_mode"],
+        "carbon_value": config["carbon_value"],
+        "operating_prd": config["operating_prd"],
+        "util_operating_first": config["util_operating_first"],
+        "util_operating_second": config["util_operating_second"],
+        "util_operating_third": config["util_operating_third"],
+        "infl": config["infl"],
+        "RR": config["RR"],
+        "IRR": config["IRR"],
+        "construction_prd": config["construction_prd"],
+        "capex_spread": config["capex_spread"],
+        "shrDebt_value": config["shrDebt_value"],
+        "baseYear": config["baseYear"],
+        "ownerCost": config["ownerCost"],
+        "corpTAX_value": config["corpTAX_value"],
+        "Feed_Price": config["Feed_Price"],
+        "Fuel_Price": config["Fuel_Price"],
+        "Elect_Price": config["Elect_Price"],
+        "CarbonTAX_value": config["CarbonTAX_value"],
+        "credit_value": config["credit_value"],
+        "CAPEX": config["CAPEX"],
+        "OPEX": config["OPEX"],
+        "PRIcoef": config["PRIcoef"],
+        "CONcoef": config["CONcoef"],
+    }
+    
+    # Add calculated parameters from custom_data
+    calculated_params = {
+        "Cap": custom_data.iloc[0]["Cap"],
+        "Yld": custom_data.iloc[0]["Yld"],
+        "feedEcontnt": custom_data.iloc[0]["feedEcontnt"],
+        "Heat_req": custom_data.iloc[0]["Heat_req"],
+        "Elect_req": custom_data.iloc[0]["Elect_req"],
+        "feedCcontnt": custom_data.iloc[0]["feedCcontnt"],
+    }
+    
+    log_data.update(calculated_params)
+    
+    # Log the parameters
+    logger.info("Analysis parameters used:")
+    for key, value in log_data.items():
+        logger.info(f"{key}: {value}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
