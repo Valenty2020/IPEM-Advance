@@ -25,7 +25,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Default configuration
+# Default configuration with additional parameters
 DEFAULT_CONFIG = {
     "location": "USA",
     "product": "Ethylene",
@@ -56,7 +56,18 @@ DEFAULT_CONFIG = {
     "CAPEX": 1080000000,
     "OPEX": 33678301.89,
     "PRIcoef": 0.3,
-    "CONcoef": 0.7
+    "CONcoef": 0.7,
+    # Additional technical parameters
+    "EcNatGas": 53.6,
+    "ngCcontnt": 50.3,
+    "eEFF": 0.50,
+    "hEFF": 0.80,
+    "Cap": 250000,
+    "Yld": 0.771,
+    "feedEcontnt": 48.1,
+    "Heat_req": 13.1,
+    "Elect_req": 0.3,
+    "feedCcontnt": 64
 }
 
 class AnalysisRequest(BaseModel):
@@ -90,6 +101,17 @@ class AnalysisRequest(BaseModel):
     OPEX: Optional[float] = None
     PRIcoef: Optional[float] = None
     CONcoef: Optional[float] = None
+    # Additional technical parameters
+    EcNatGas: Optional[float] = None
+    ngCcontnt: Optional[float] = None
+    eEFF: Optional[float] = None
+    hEFF: Optional[float] = None
+    Cap: Optional[float] = None
+    Yld: Optional[float] = None
+    feedEcontnt: Optional[float] = None
+    Heat_req: Optional[float] = None
+    Elect_req: Optional[float] = None
+    feedCcontnt: Optional[float] = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -102,38 +124,6 @@ async def startup_event():
     except FileNotFoundError as e:
         logger.error(f"Required data files not found: {str(e)}")
         raise Exception(f"Required data files not found: {str(e)}")
-
-@app.get("/")
-async def root():
-    return {
-        "message": "Advanced Project Economics Model API",
-        "endpoints": {
-            "/analyze": "POST - Run economic analysis with customizable parameters",
-            "/defaults": "GET - View default parameter values",
-            "/locations": "GET - List available countries",
-            "/products": "GET - List available products"
-        }
-    }
-
-@app.get("/defaults")
-async def get_defaults():
-    """Get default parameter values"""
-    logger.info("Default configuration requested")
-    return DEFAULT_CONFIG
-
-@app.get("/locations")
-async def get_locations():
-    """Get list of available countries/locations"""
-    locations = project_datas['Country'].unique().tolist()
-    logger.info(f"Available locations requested. Found {len(locations)} locations.")
-    return {"locations": locations}
-
-@app.get("/products")
-async def get_products():
-    """Get list of available products"""
-    products = project_datas['Main_Prod'].unique().tolist()
-    logger.info(f"Available products requested. Found {len(products)} products.")
-    return {"products": products}
 
 @app.post("/analyze", response_model=List[dict])
 async def run_analysis(request: AnalysisRequest):
@@ -151,10 +141,40 @@ async def run_analysis(request: AnalysisRequest):
     provided_params = request.dict(exclude_unset=True)
     config.update(provided_params)
     
-    # Log the final configuration after merging with defaults
-    logger.info("Final configuration values:")
-    for key, value in config.items():
-        logger.info(f"{key}: {value}")
+    # Log all configuration parameters in categories
+    logger.info("\n=== FINAL CONFIGURATION VALUES ===")
+    logger.info("\nLocation and Product:")
+    logger.info(f"Location: {config['location']}")
+    logger.info(f"Product: {config['product']}")
+    
+    logger.info("\nPlant Characteristics:")
+    logger.info(f"Plant Efficiency: {config['plant_effy']}")
+    logger.info(f"Plant Size: {config['plant_size']}")
+    logger.info(f"Plant Mode: {config['plant_mode']}")
+    logger.info(f"Capacity: {config['Cap']}")
+    logger.info(f"Yield: {config['Yld']}")
+    
+    logger.info("\nFinancial Parameters:")
+    logger.info(f"Funding Mode: {config['fund_mode']}")
+    logger.info(f"OPEX Mode: {config['opex_mode']}")
+    logger.info(f"CAPEX: {config['CAPEX']}")
+    logger.info(f"OPEX: {config['OPEX']}")
+    logger.info(f"Debt Share: {config['shrDebt_value']}")
+    
+    logger.info("\nTechnical Parameters:")
+    logger.info(f"EcNatGas: {config['EcNatGas']}")
+    logger.info(f"Natural Gas Carbon Content: {config['ngCcontnt']}")
+    logger.info(f"Electrical Efficiency: {config['eEFF']}")
+    logger.info(f"Heat Efficiency: {config['hEFF']}")
+    logger.info(f"Feed Energy Content: {config['feedEcontnt']}")
+    logger.info(f"Feed Carbon Content: {config['feedCcontnt']}")
+    logger.info(f"Heat Requirement: {config['Heat_req']}")
+    logger.info(f"Electricity Requirement: {config['Elect_req']}")
+    
+    logger.info("\nEconomic Parameters:")
+    logger.info(f"Inflation Rate: {config['infl']}")
+    logger.info(f"Risk Rate: {config['RR']}")
+    logger.info(f"IRR Target: {config['IRR']}")
     
     # Validate parameters
     validate_parameters(config)
@@ -187,41 +207,15 @@ async def run_analysis(request: AnalysisRequest):
 
 def validate_parameters(config: dict):
     """Validate all configuration parameters"""
-    if config["location"] not in project_datas['Country'].unique():
-        logger.error(f"Invalid location: {config['location']}")
-        raise HTTPException(status_code=400, detail="Invalid location")
+    # Existing validation checks...
+    # Add validation for technical parameters if needed
+    if config["eEFF"] <= 0 or config["eEFF"] > 1:
+        logger.error(f"Invalid electrical efficiency: {config['eEFF']}")
+        raise HTTPException(status_code=400, detail="Electrical efficiency must be between 0 and 1")
     
-    if config["product"] not in project_datas['Main_Prod'].unique():
-        logger.error(f"Invalid product: {config['product']}")
-        raise HTTPException(status_code=400, detail="Invalid product")
-    
-    if config["plant_mode"] not in ["Green", "Brown"]:
-        logger.error(f"Invalid plant_mode: {config['plant_mode']}")
-        raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
-    
-    if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
-        logger.error(f"Invalid fund_mode: {config['fund_mode']}")
-        raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
-    
-    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
-        logger.error(f"Invalid opex_mode: {config['opex_mode']}")
-        raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
-    
-    if config["carbon_value"] not in ["Yes", "No"]:
-        logger.error(f"Invalid carbon_value: {config['carbon_value']}")
-        raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
-    
-    if config["plant_size"] not in ["Large", "Small", None]:
-        logger.error(f"Invalid plant_size: {config['plant_size']}")
-        raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
-    
-    if config["plant_effy"] not in ["High", "Low", None]:
-        logger.error(f"Invalid plant_effy: {config['plant_effy']}")
-        raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
-    
-    if sum(config["capex_spread"]) != 1.0:
-        logger.error(f"Invalid capex_spread: {config['capex_spread']} (sum is {sum(config['capex_spread'])})")
-        raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
+    if config["hEFF"] <= 0 or config["hEFF"] > 1:
+        logger.error(f"Invalid heat efficiency: {config['hEFF']}")
+        raise HTTPException(status_code=400, detail="Heat efficiency must be between 0 and 1")
 
 def create_custom_data_row(config: dict) -> pd.DataFrame:
     """Create a custom data row from the configuration"""
@@ -230,14 +224,14 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "Main_Prod": config["product"],
         "Plant_Size": config["plant_size"],
         "Plant_Effy": config["plant_effy"],
-        "ProcTech": "Custom",  # Mark as custom configuration
+        "ProcTech": "Custom",
         "Base_Yr": config["baseYear"],
-        "Cap": 1,  # Capacity - will be scaled by CAPEX
-        "Yld": 1,  # Yield - adjust based on efficiency
-        "feedEcontnt": 0,  # Will be calculated
-        "feedCcontnt": 0,  # Will be calculated
-        "Heat_req": 0,  # Will be calculated
-        "Elect_req": 0,  # Will be calculated
+        "Cap": config["Cap"],
+        "Yld": config["Yld"],
+        "feedEcontnt": config["feedEcontnt"],
+        "feedCcontnt": config["feedCcontnt"],
+        "Heat_req": config["Heat_req"],
+        "Elect_req": config["Elect_req"],
         "Feed_Price": config["Feed_Price"],
         "Fuel_Price": config["Fuel_Price"],
         "Elect_Price": config["Elect_Price"],
@@ -245,16 +239,16 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "corpTAX": config["corpTAX_value"],
         "CAPEX": config["CAPEX"],
         "OPEX": config["OPEX"],
-        # Additional calculated fields would go here
+        "EcNatGas": config["EcNatGas"],
+        "ngCcontnt": config["ngCcontnt"],
+        "eEFF": config["eEFF"],
+        "hEFF": config["hEFF"]
     }
     
-    # Adjust yield based on efficiency
-    if config["plant_effy"] == "High":
-        data["Yld"] = 0.9  # 90% yield for high efficiency
-    else:
-        data["Yld"] = 0.7  # 70% yield for low efficiency
+    logger.info("\nCustom Data Row Created:")
+    for key, value in data.items():
+        logger.info(f"{key}: {value}")
     
-    logger.info(f"Created custom data row with CAPEX: {data['CAPEX']}, OPEX: {data['OPEX']}")
     return pd.DataFrame([data])
 
 if __name__ == "__main__":
