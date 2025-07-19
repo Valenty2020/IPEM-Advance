@@ -926,7 +926,7 @@ def MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_
 
 ############################################################# ANALYTICS MODEL BEGINS ############################################################
 
-def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
+def Analytics_Model2(multiplier, project_data, location, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
 
   # Filtering data to choose country in which chemical plant is located and the type of product from the plant
   dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
