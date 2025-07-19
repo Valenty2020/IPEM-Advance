@@ -7,16 +7,6 @@ import uvicorn
 import logging
 from originalmodel import Analytics_Model2
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('api_logs.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Project Economics Model API",
