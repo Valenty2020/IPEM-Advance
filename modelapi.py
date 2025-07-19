@@ -5,8 +5,7 @@ import pandas as pd
 import numpy as np
 import uvicorn
 import logging
-from datetime import datetime
-from originalmodel import Analytic_Model2
+from originalmodel import Analytics_Model2
 
 # Set up logging
 logging.basicConfig(
@@ -21,16 +20,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Project Economics Model API",
-    description="API for chemical plant economics analysis - Full Custom Mode",
-    version="3.0.0"
+    description="API for chemical plant economics analysis - Strict Payload Only",
+    version="2.0.0"
 )
 
 class AnalysisRequest(BaseModel):
-    # Core parameters (all optional)
-    location: Optional[str] = None
-    product: Optional[str] = None
-    
-    # Plant configuration
+    # Required parameters with no defaults
+    location: str
+    product: str
     plant_effy: str
     plant_size: str
     plant_mode: str
@@ -38,7 +35,7 @@ class AnalysisRequest(BaseModel):
     opex_mode: str
     carbon_value: str
     
-    # Technical parameters
+    # Optional technical parameters
     operating_prd: int
     util_operating_first: float
     util_operating_second: float
@@ -61,6 +58,8 @@ class AnalysisRequest(BaseModel):
     OPEX: float
     PRIcoef: float
     CONcoef: float
+    
+    # Technical parameters
     EcNatGas: float
     ngCcontnt: float
     eEFF: float
@@ -71,7 +70,6 @@ class AnalysisRequest(BaseModel):
     Heat_req: float
     Elect_req: float
     feedCcontnt: float
-    ProcTech: Optional[str] = "Custom"
 
 @app.on_event("startup")
 async def startup_event():
@@ -89,27 +87,28 @@ async def startup_event():
 async def run_analysis(request: AnalysisRequest):
     """
     Run economic analysis using ONLY the provided payload values.
-    Both location and product are optional - pure custom mode.
+    All parameters are required - no defaults will be used.
     """
+    # Convert request to dict and log everything
     config = request.dict()
-    logger.info("\n=== FULL PAYLOAD VALUES ===")
+    logger.info("\n=== PAYLOAD VALUES RECEIVED ===")
     for key, value in config.items():
         logger.info(f"{key}: {value}")
     
     # Validate parameters
     validate_parameters(config)
     
-    # Create data row from payload
+    # Create data row from payload only
     custom_data = create_custom_data_row(config)
     
     # Run analysis
     try:
-        logger.info("Starting custom analysis...")
+        logger.info("Starting analysis with payload values only...")
         results = Analytics_Model2(
             multiplier=multipliers,
             project_data=custom_data,
-            location=config.get("location"),  # Can be None
-            product=config.get("product"),    # Can be None
+            location=config["location"],
+            product=config["product"],
             plant_mode=config["plant_mode"],
             fund_mode=config["fund_mode"],
             opex_mode=config["opex_mode"],
@@ -122,39 +121,54 @@ async def run_analysis(request: AnalysisRequest):
         return results.to_dict(orient='records')
     
     except Exception as e:
-        logger.error(f"Analysis error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error running analysis: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error running analysis: {str(e)}")
 
 def validate_parameters(config: dict):
-    """Validate all parameters"""
-    if config.get("location") and config["location"] not in project_datas['Country'].unique():
-        raise HTTPException(400, "Invalid location specified")
+    """Validate all payload parameters"""
+    if config["location"] not in project_datas['Country'].unique():
+        logger.error(f"Invalid location: {config['location']}")
+        raise HTTPException(status_code=400, detail="Invalid location")
     
-    if config.get("product") and config["product"] not in project_datas['Main_Prod'].unique():
-        raise HTTPException(400, "Invalid product specified")
+    if config["product"] not in project_datas['Main_Prod'].unique():
+        logger.error(f"Invalid product: {config['product']}")
+        raise HTTPException(status_code=400, detail="Invalid product")
     
-    # Validate plant modes
     if config["plant_mode"] not in ["Green", "Brown"]:
-        raise HTTPException(400, "plant_mode must be 'Green' or 'Brown'")
+        raise HTTPException(status_code=400, detail="plant_mode must be 'Green' or 'Brown'")
     
     if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
-        raise HTTPException(400, "fund_mode must be 'Debt', 'Equity', or 'Mixed'")
+        raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
     
-    # Validate technical parameters
+    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
+        raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
+    
+    if config["carbon_value"] not in ["Yes", "No"]:
+        raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
+    
+    if config["plant_size"] not in ["Large", "Small"]:
+        raise HTTPException(status_code=400, detail="plant_size must be 'Large' or 'Small'")
+    
+    if config["plant_effy"] not in ["High", "Low"]:
+        raise HTTPException(status_code=400, detail="plant_effy must be 'High' or 'Low'")
+    
+    if sum(config["capex_spread"]) != 1.0:
+        raise HTTPException(status_code=400, detail="capex_spread values must sum to 1.0")
+    
     if config["eEFF"] <= 0 or config["eEFF"] > 1:
-        raise HTTPException(400, "Electrical efficiency must be between 0 and 1")
+        raise HTTPException(status_code=400, detail="Electrical efficiency must be between 0 and 1")
     
-    if abs(sum(config["capex_spread"]) - 1.0) > 0.001:  # Allow for floating point precision
-        raise HTTPException(400, "capex_spread values must sum to 1.0")
+    if config["hEFF"] <= 0 or config["hEFF"] > 1:
+        raise HTTPException(status_code=400, detail="Heat efficiency must be between 0 and 1")
 
 def create_custom_data_row(config: dict) -> pd.DataFrame:
-    """Create complete data row from payload"""
+    """Create data row from payload values only"""
     data = {
-        "Country": config.get("location", "Custom"),
-        "Main_Prod": config.get("product", "Custom"),
+        "Country": config["location"],
+        "Main_Prod": config["product"],
         "Plant_Size": config["plant_size"],
         "Plant_Effy": config["plant_effy"],
-        "ProcTech": config.get("ProcTech", "Custom"),
+        "ProcTech": "Custom",
         "Base_Yr": config["baseYear"],
         "Cap": config["Cap"],
         "Yld": config["Yld"],
@@ -172,16 +186,14 @@ def create_custom_data_row(config: dict) -> pd.DataFrame:
         "EcNatGas": config["EcNatGas"],
         "ngCcontnt": config["ngCcontnt"],
         "eEFF": config["eEFF"],
-        "hEFF": config["hEFF"],
-        # Additional calculated fields
-        "operating_prd": config["operating_prd"],
-        "util_operating_first": config["util_operating_first"],
-        "util_operating_second": config["util_operating_second"],
-        "util_operating_third": config["util_operating_third"]
+        "hEFF": config["hEFF"]
     }
     
-    logger.info("\nCustom Data Row Created:")
+    logger.info("\nCustom Data Row Created From Payload:")
     for key, value in data.items():
         logger.info(f"{key}: {value}")
     
     return pd.DataFrame([data])
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
