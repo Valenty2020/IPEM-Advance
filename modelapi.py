@@ -169,8 +169,8 @@ def validate_parameters(config: dict):
     if config["fund_mode"] not in ["Debt", "Equity", "Mixed"]:
         raise HTTPException(status_code=400, detail="fund_mode must be 'Debt', 'Equity', or 'Mixed'")
     
-    if config["opex_mode"] not in ["Inflated", "Fixed"]:
-        raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Fixed'")
+    if config["opex_mode"] not in ["Inflated", "Uninflated"]:
+        raise HTTPException(status_code=400, detail="opex_mode must be 'Inflated' or 'Uninflated'")
     
     if config["carbon_value"] not in ["Yes", "No"]:
         raise HTTPException(status_code=400, detail="carbon_value must be 'Yes' or 'No'")
