@@ -925,165 +925,146 @@ def MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_
 
 
 ############################################################# ANALYTICS MODEL BEGINS ############################################################
+
 def Analytics_Model2(multiplier, project_data, location, product, plant_mode, fund_mode, opex_mode, carbon_value, plant_size, plant_effy):
-    """
-    Enhanced analytics model that handles:
-    - Fully custom mode (when location/product are None)
-    - Regional mode (location only)
-    - Full sector mode (location + product)
-    """
-    
-    # Handle custom data scenarios
-    if location is None and product is None:
-        # Pure custom mode - use project_data exactly as provided
-        dt = project_data.copy()
-        
-    elif location is None:
-        raise ValueError("Cannot specify product without location")
-        
-    elif product is None:
-        # Regional mode - match only location
-        dt = project_data[project_data['Country'] == location].copy()
-        if dt.empty:
-            dt = project_data.copy()
-            dt['Country'] = location
-            dt['Main_Prod'] = 'Custom'
-            
+
+  # Filtering data to choose country in which chemical plant is located and the type of product from the plant
+  dt = project_data[(project_data['Country'] == location) & (project_data['Main_Prod'] == product)]
+
+
+  Infl = 0.02  
+
+  tempNUM = 1000000
+  results=[]
+  for index, data in dt.iterrows():
+
+    prodQ, feedQ, Rheat, netHeat, Relec, ghg_dir, ghg_ind = ChemProcess_Model(data)
+    Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, utilContr, bankContr, taxContr, otherContr, cshflw, cshflw2, Year, project_life, construction_prd, Yrly_invsmt, bank_chrg, NetRevn, tax_pybl = MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value)
+    GDP_dir, GDP_ind, GDP_tot, JOB_dir, JOB_ind, JOB_tot, PAY_dir, PAY_ind, PAY_tot, TAX_dir, TAX_ind, TAX_tot, GDP_totPRI, JOB_totPRI, PAY_totPRI, GDP_dirPRI, JOB_dirPRI, PAY_dirPRI = MacroEconomic_Model(multiplier, data, location, plant_mode, fund_mode, opex_mode, carbon_value)
+
+    Yrly_cost = np.array(Yrly_invsmt) + np.array(bank_chrg)
+
+    Ps = [Ps] * project_life
+    Pc = [Pc] * project_life
+    Psk = [0] * project_life
+    Pck = [0] * project_life
+
+    for i in range(project_life):
+      Psk[i] = Pso * ((1 + Infl) ** i)
+      Pck[i] = Pco * ((1 + Infl) ** i)
+
+
+    Rs = [Ps[i] * prodQ[i] for i in range(project_life)]
+    NRs = [Rs[i] - Yrly_cost[i] for i in range(project_life)]
+
+
+    Rsk = Psk * prodQ
+    NRsk = Rsk - Yrly_cost
+
+    ccflows = np.cumsum(NRs)
+    ccflowsk = np.cumsum(NRsk)
+
+    cost_modes = ["Supply Cost", "Cash Cost"]
+    if plant_mode == "Green":
+      cost_mode = cost_modes[0]
     else:
-        # Full sector mode - match both location and product
-        dt = project_data[(project_data['Country'] == location) & 
-                         (project_data['Main_Prod'] == product)].copy()
-        if dt.empty:
-            dt = project_data.copy()
-            dt['Country'] = location
-            dt['Main_Prod'] = product
+      cost_mode = cost_modes[1]
 
-    Infl = 0.02  
-    tempNUM = 1000000
-    results = []
-    
-    for index, data in dt.iterrows():
-        # 1. Process Calculations
-        prodQ, feedQ, Rheat, netHeat, Relec, ghg_dir, ghg_ind = ChemProcess_Model(data)
-        
-        # 2. Economic Calculations
-        (Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, 
-         utilContr, bankContr, taxContr, otherContr, cshflw, 
-         cshflw2, Year, project_life, construction_prd, 
-         Yrly_invsmt, bank_chrg, NetRevn, tax_pybl) = MicroEconomic_Model(
-            data, plant_mode, fund_mode, opex_mode, carbon_value
-         )
-        
-        # 3. Macroeconomic Impact
-        (GDP_dir, GDP_ind, GDP_tot, JOB_dir, JOB_ind, JOB_tot,
-         PAY_dir, PAY_ind, PAY_tot, TAX_dir, TAX_ind, TAX_tot,
-         GDP_totPRI, JOB_totPRI, PAY_totPRI, GDP_dirPRI, 
-         JOB_dirPRI, PAY_dirPRI) = MacroEconomic_Model(
-            multiplier, data, location, plant_mode, fund_mode, opex_mode, carbon_value
-         )
 
-        # Prepare yearly calculations
-        Yrly_cost = np.array(Yrly_invsmt) + np.array(bank_chrg)
-        
-        # Price adjustments
-        Ps = [Ps] * project_life
-        Pc = [Pc] * project_life
-        Psk = [0] * project_life
-        Pck = [0] * project_life
+    pri_bothJOB = [0] * project_life
+    pri_directJOB = [0] * project_life
+    pri_indirectJOB = [0] * project_life
 
-        for i in range(project_life):
-            Psk[i] = Pso * ((1 + Infl) ** i)
-            Pck[i] = Pco * ((1 + Infl) ** i)
+    All_directJOB = [0] * project_life
+    All_indirectJOB = [0] * project_life
+    All_bothJOB = [0] * project_life
 
-        # Revenue calculations
-        Rs = [Ps[i] * prodQ[i] for i in range(project_life)]
-        NRs = [Rs[i] - Yrly_cost[i] for i in range(project_life)]
-        Rsk = Psk * prodQ
-        NRsk = Rsk - Yrly_cost
+    pri_bothGDP = GDP_totPRI
+    pri_directGDP = GDP_dirPRI
+    pri_indirectGDP = GDP_totPRI - GDP_dirPRI
+    All_bothGDP = GDP_tot
+    All_directGDP =  GDP_dir
+    All_indirectGDP = GDP_tot - GDP_dir
 
-        # Cumulative flows
-        ccflows = np.cumsum(NRs)
-        ccflowsk = np.cumsum(NRsk)
+    pri_bothTAX = TAX_tot
+    pri_directTAX = TAX_dir
+    pri_indirectTAX = TAX_ind
 
-        # Cost mode determination
-        cost_modes = ["Supply Cost", "Cash Cost"]
-        cost_mode = cost_modes[0] if plant_mode == "Green" else cost_modes[1]
+    pri_bothPAY = PAY_totPRI
+    pri_directPAY = PAY_dirPRI
+    pri_indirectPAY = PAY_totPRI - PAY_dirPRI
+    All_bothPAY = PAY_tot
+    All_directPAY = PAY_dir
+    All_indirectPAY = PAY_tot - PAY_dir
 
-        # Job calculations
-        pri_bothJOB = [0] * project_life
-        pri_directJOB = [0] * project_life
-        pri_indirectJOB = [0] * project_life
-        All_directJOB = [0] * project_life
-        All_indirectJOB = [0] * project_life
-        All_bothJOB = [0] * project_life
 
-        # Economic impact calculations
-        pri_bothGDP = GDP_totPRI
-        pri_directGDP = GDP_dirPRI
-        pri_indirectGDP = GDP_totPRI - GDP_dirPRI
-        All_bothGDP = GDP_tot
-        All_directGDP = GDP_dir
-        All_indirectGDP = GDP_tot - GDP_dir
 
-        pri_bothTAX = TAX_tot
-        pri_directTAX = TAX_dir
-        pri_indirectTAX = TAX_ind
+    pri_bothJOB[construction_prd:] = JOB_totPRI[construction_prd:]
+    pri_directJOB[construction_prd:] = JOB_dirPRI[construction_prd:]
+    pri_indirectJOB[construction_prd:] = JOB_totPRI[construction_prd:]  - JOB_dirPRI[construction_prd:]
 
-        pri_bothPAY = PAY_totPRI
-        pri_directPAY = PAY_dirPRI
-        pri_indirectPAY = PAY_totPRI - PAY_dirPRI
-        All_bothPAY = PAY_tot
-        All_directPAY = PAY_dir
-        All_indirectPAY = PAY_tot - PAY_dir
+    pri_bothJOB[:construction_prd] = JOB_totPRI[:construction_prd]
+    pri_directJOB[:construction_prd] = JOB_dirPRI[:construction_prd]
+    pri_indirectJOB[:construction_prd] = JOB_totPRI[:construction_prd]  - JOB_dirPRI[:construction_prd]
 
-        # Timeline adjustments
-        for arr in [pri_bothJOB, pri_directJOB, pri_indirectJOB,
-                   All_bothJOB, All_directJOB, All_indirectJOB]:
-            arr[construction_prd:] = JOB_totPRI[construction_prd:] if 'pri' in arr.name else JOB_tot[construction_prd:]
-            arr[:construction_prd] = JOB_totPRI[:construction_prd] if 'pri' in arr.name else JOB_tot[:construction_prd]
 
-        # Compile results
-        result = pd.DataFrame({
-            'Year': Year,
-            'Process Technology': [data['ProcTech']] * project_life,
-            'Plant Size': [data['Plant_Size']] * project_life,
-            'Plant Efficiency': [data['Plant_Effy']] * project_life,
-            'Feedstock Input (TPA)': feedQ,
-            'Product Output (TPA)': prodQ,
-            'Direct GHG Emissions (TPA)': ghg_dir,
-            'Cost Mode': [cost_mode] * project_life,
-            'Real cumCash Flow': ccflows,
-            'Nominal cumCash Flow': ccflowsk,
-            'Constant$ Breakeven Price': Ps,
-            'Capex portion': [capexContr] * project_life,
-            'Opex portion': [opexContr] * project_life,
-            'Feed portion': [feedContr] * project_life,
-            'Util portion': [utilContr] * project_life,
-            'Bank portion': [bankContr] * project_life,
-            'Tax portion': [taxContr] * project_life,
-            'Other portion': [otherContr] * project_life,
-            'Current$ Breakeven Price': Psk,
-            'Constant$ SC wCredit': Pc,
-            'Current$ SC wCredit': Pck,
-            'Project Finance': [fund_mode] * project_life,
-            'Carbon Valued': [carbon_value] * project_life,
-            'Feedstock Price ($/t)': [data['Feed_Price']] * project_life,
-            # Economic impacts (normalized)
-            'pri_directGDP': np.array(pri_directGDP)/tempNUM,
-            'pri_bothGDP': np.array(pri_bothGDP)/tempNUM,
-            'All_directGDP': np.array(All_directGDP)/tempNUM,
-            'All_bothGDP': np.array(All_bothGDP)/tempNUM,
-            'pri_directPAY': np.array(pri_directPAY)/tempNUM,
-            'pri_bothPAY': np.array(pri_bothPAY)/tempNUM,
-            'All_directPAY': np.array(All_directPAY)/tempNUM,
-            'All_bothPAY': np.array(All_bothPAY)/tempNUM,
-            'pri_directJOB': np.array(pri_directJOB)/tempNUM,
-            'pri_bothJOB': np.array(pri_bothJOB)/tempNUM,
-            'All_directJOB': np.array(All_directJOB)/tempNUM,
-            'All_bothJOB': np.array(All_bothJOB)/tempNUM,
-            'pri_directTAX': np.array(pri_directTAX)/tempNUM,
-            'pri_bothTAX': np.array(pri_bothTAX)/tempNUM
-        })
-        results.append(result)
 
-    return pd.concat(results, ignore_index=True)
+    All_bothJOB[construction_prd:] = JOB_tot[construction_prd:]
+    All_directJOB[construction_prd:] = JOB_dir[construction_prd:]
+    All_indirectJOB[construction_prd:] = JOB_tot[construction_prd:]  - JOB_dir[construction_prd:]
+
+    All_bothJOB[:construction_prd] = JOB_tot[:construction_prd]
+    All_directJOB[:construction_prd] = JOB_dir[:construction_prd]
+    All_indirectJOB[:construction_prd] = JOB_tot[:construction_prd]  - JOB_dir[:construction_prd]
+
+
+
+    result = pd.DataFrame({
+        'Year': Year,
+        'Process Technology': [data['ProcTech']] * project_life,
+        'Plant Size': [data['Plant_Size']] * project_life,
+        'Plant Efficiency': [data['Plant_Effy']] * project_life,
+        'Feedstock Input (TPA)': feedQ,
+        'Product Output (TPA)': prodQ,
+        'Direct GHG Emissions (TPA)': ghg_dir,
+        'Cost Mode': [cost_mode]  * project_life,
+        'Real cumCash Flow': ccflows,
+        'Nominal cumCash Flow': ccflowsk,
+        'Constant$ Breakeven Price': Ps,
+        'Capex portion': [capexContr] * project_life,
+        'Opex portion': [opexContr] * project_life,
+        'Feed portion': [feedContr] * project_life,
+        'Util portion': [utilContr] * project_life,
+        'Bank portion': [bankContr] * project_life,
+        'Tax portion': [taxContr] * project_life,
+        'Other portion': [otherContr] * project_life,
+        'Current$ Breakeven Price': Psk,
+        'Constant$ SC wCredit': Pc,
+        'Current$ SC wCredit': Pck,
+        'Project Finance': [fund_mode] * project_life,
+        'Carbon Valued': [carbon_value] * project_life,
+        'Feedstock Price ($/t)': [data['Feed_Price']] * project_life,
+        'pri_directGDP': np.array(pri_directGDP)/tempNUM,
+        'pri_bothGDP': np.array(pri_bothGDP)/tempNUM,
+        'All_directGDP': np.array(All_directGDP)/tempNUM,
+        'All_bothGDP': np.array(All_bothGDP)/tempNUM,
+        'pri_directPAY': np.array(pri_directPAY)/tempNUM,
+        'pri_bothPAY': np.array(pri_bothPAY)/tempNUM,
+        'All_directPAY': np.array(All_directPAY)/tempNUM,
+        'All_bothPAY': np.array(All_bothPAY)/tempNUM,
+        'pri_directJOB': np.array(pri_directJOB)/tempNUM,
+        'pri_bothJOB': np.array(pri_bothJOB)/tempNUM,
+        'All_directJOB': np.array(All_directJOB)/tempNUM,
+        'All_bothJOB': np.array(All_bothJOB)/tempNUM,
+        'pri_directTAX': np.array(pri_directTAX)/tempNUM,
+        'pri_bothTAX': np.array(pri_bothTAX)/tempNUM
+    })
+    results.append(result)
+
+
+  results = pd.concat(results, ignore_index=True)
+
+
+
+  return results
+
