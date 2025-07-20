@@ -543,15 +543,13 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
       otherContr = Ps - (capexContr + opexContr + feedContr + utilContr + bankContr + taxContr)
   ######NEW END###################
 
-
   else:     #fund_mode is Mixed     ----------------------------------------------MIXED---------------------------------
     for i in range(project_life):
         if i <= (construction_prd + 1):
-            bank_chrg[i] = RR * sum(shrDebt * Yrly_invsmt[:i+1])
+            bank_chrg[i] = RR * shrDebt * sum(Yrly_invsmt[:i+1])  # Changed this line
         else:
-            bank_chrg[i] = RR * sum(shrDebt * Yrly_invsmt[:construction_prd+1])
+            bank_chrg[i] = RR * shrDebt * sum(Yrly_invsmt[:construction_prd+1])  # Changed this line
 
-    
     deprCAPEX = (1-OwnerCost)*sum(Yrly_invsmt[:construction_prd])
     
     cshflw = [0] * project_life  
@@ -575,21 +573,16 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
         Pstark[i] = Pstaro * ((1 + Infl) ** i)
       Rstark = [Pstark[i] * prodQ[i] for i in range(project_life)]
 
-      
-      #NetRevn = Rstark - Yrly_invsmt
       NetRevn = [r - y for r, y in zip(Rstark, Yrly_cost)]
 
-      
       for i in range(construction_prd + 1, project_life):
           if sum(NetRevn[:i]) - sum(bank_chrg[:i - 1]) < 0:
               bank_chrg[i] = RR * abs(sum(NetRevn[:i]) - sum(bank_chrg[:i - 1]))
           else:
               bank_chrg[i] = 0
 
-      
       TIC = data['CAPEX'] + sum(bank_chrg)
 
-      
       tax_pybl = [0] * project_life  
       depr_asst = 0  
       cshflw2 = [0] * project_life  
@@ -645,7 +638,6 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
       Pc = sum(cshflw2) / sum(dctftr)
       Pco = sum(cshflw2) / sum(dctftr2)
 
-  ######NEW START###################
       for i in range(len(Year)):
         ContrDenom[i] = prodQ[i] / ((1 + IRR) ** i)
         capexContrN[i] = (capex[i]) / ((1 + IRR) ** i)
@@ -661,9 +653,6 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
       bankContr = sum(bankContrN) / sum(ContrDenom)
       taxContr = sum(taxContrN) / sum(ContrDenom)
       otherContr = Ps - (capexContr + opexContr + feedContr + utilContr + bankContr + taxContr)      
-  ######NEW END###################
-
-
 
     #----------------------------------------------------------------------------Brown field
     else:
@@ -686,21 +675,10 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
         Pstark[i] = Pstaro * ((1 + Infl) ** i)
       Rstark = [Pstark[i] * prodQ[i] for i in range(project_life)]
 
-      
-      #NetRevn = Rstark - Yrly_invsmt
       NetRevn = [r - y for r, y in zip(Rstark, Yrly_cost)]
 
-      
-      for i in range(construction_prd + 1, project_life):
-          if sum(NetRevn[:i]) - sum(bank_chrg[:i - 1]) < 0:
-              bank_chrg[i] = RR * abs(sum(NetRevn[:i]) - sum(bank_chrg[:i - 1]))
-          else:
-              bank_chrg[i] = 0
-
-      
       TIC = data['CAPEX'] + sum(bank_chrg)
 
-      
       tax_pybl = [0] * project_life  
       depr_asst = 0  
       cshflw2 = [0] * project_life  
@@ -728,7 +706,6 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
       Pc = sum(cshflw2) / sum(dctftr)
       Pco = sum(cshflw2) / sum(dctftr2)
 
-  ######NEW START###################
       for i in range(len(Year)):
         ContrDenom[i] = prodQ[i] / ((1 + IRR) ** i)
         capexContrN[i] = (capex[i]) / ((1 + IRR) ** i)
@@ -744,7 +721,9 @@ def MicroEconomic_Model(data, plant_mode, fund_mode, opex_mode, carbon_value):
       bankContr = sum(bankContrN) / sum(ContrDenom)
       taxContr = sum(taxContrN) / sum(ContrDenom)
       otherContr = Ps - (capexContr + opexContr + feedContr + utilContr + bankContr + taxContr)
-  ######NEW END###################
+
+
+
 
 
   return Ps, Pso, Pc, Pco, capexContr, opexContr, feedContr, utilContr, bankContr, taxContr, otherContr, cshflw, cshflw2, Year, project_life, construction_prd, Yrly_invsmt, bank_chrg, NetRevn, tax_pybl
